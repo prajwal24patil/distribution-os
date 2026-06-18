@@ -1,0 +1,12 @@
+node_modules/
+.venv/
+backend/.venv/
+backend/pytest-cache-files-*/
+pytest-cache-files-*/
+.next/
+dist/
+build/
+coverage/
+htmlcov/
+package-lock.json
+*.tsbuildinfo

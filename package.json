@@ -1,0 +1,23 @@
+{
+  "name": "distributionos",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace apps/web",
+    "build": "npm run build --workspace apps/web",
+    "lint": "npm run lint --workspace apps/web",
+    "format": "prettier --check .",
+    "format:write": "prettier --write .",
+    "typecheck": "npm run typecheck --workspace apps/web"
+  },
+  "devDependencies": {
+    "next": "^15.5.0",
+    "prettier": "^3.3.3"
+  },
+  "engines": {
+    "node": ">=20.11.0"
+  }
+}

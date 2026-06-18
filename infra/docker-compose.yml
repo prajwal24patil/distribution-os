@@ -1,0 +1,22 @@
+services:
+  web:
+    build:
+      context: ..
+      dockerfile: infra/docker/frontend.Dockerfile
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+  api:
+    build:
+      context: ..
+      dockerfile: infra/docker/backend.Dockerfile
+    environment:
+      APP_ENV: local
+      APP_NAME: DistributionOS API
+      ALLOWED_ORIGINS: http://localhost:3000
+    ports:
+      - "8000:8000"
