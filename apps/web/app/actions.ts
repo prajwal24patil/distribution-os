@@ -2,8 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { buildGrowthActions, buildResearchRun } from "@/lib/growthEngine";
 import { createClient } from "@/lib/supabase/server";
-import type { ProjectStatus } from "@/lib/supabase/types";
+import type { GrowthActionStatus, ProjectStatus } from "@/lib/supabase/types";
 
 function getString(formData: FormData, key: string, fallback = "") {
   const value = formData.get(key);
@@ -224,4 +225,155 @@ export async function saveProductMemory(formData: FormData) {
 
   revalidatePath(pathname);
   redirect(`${pathname}?saved=1`);
+}
+
+export async function runResearch(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const projectId = getString(formData, "project_id");
+
+  if (!projectId) {
+    redirectWithError("/projects", "Project is required.");
+  }
+
+  const pathname = `/projects/${projectId}/research`;
+  const { data: project, error: projectError } = await supabase
+    .from("projects")
+    .select("*")
+    .eq("id", projectId)
+    .single();
+
+  if (projectError || !project) {
+    redirectWithError(pathname, "Project not found.");
+  }
+
+  const { data: memory, error: memoryError } = await supabase
+    .from("product_memory")
+    .select("*")
+    .eq("project_id", projectId)
+    .eq("owner_id", user.id)
+    .maybeSingle();
+
+  if (memoryError) {
+    redirectWithError(pathname, memoryError.message);
+  }
+
+  const { error } = await supabase
+    .from("research_runs")
+    .insert(buildResearchRun({ project, memory, ownerId: user.id }));
+
+  if (error) {
+    redirectWithError(pathname, error.message);
+  }
+
+  revalidatePath(pathname);
+  redirect(`${pathname}?success=research`);
+}
+
+export async function generateGrowthActions(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const projectId = getString(formData, "project_id");
+
+  if (!projectId) {
+    redirectWithError("/projects", "Project is required.");
+  }
+
+  const pathname = `/projects/${projectId}/actions`;
+  const { data: project, error: projectError } = await supabase
+    .from("projects")
+    .select("*")
+    .eq("id", projectId)
+    .single();
+
+  if (projectError || !project) {
+    redirectWithError(pathname, "Project not found.");
+  }
+
+  const { data: memory, error: memoryError } = await supabase
+    .from("product_memory")
+    .select("*")
+    .eq("project_id", projectId)
+    .eq("owner_id", user.id)
+    .maybeSingle();
+
+  if (memoryError) {
+    redirectWithError(pathname, memoryError.message);
+  }
+
+  const { data: latestResearch } = await supabase
+    .from("research_runs")
+    .select("id")
+    .eq("project_id", projectId)
+    .eq("owner_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const actions = buildGrowthActions({
+    project,
+    memory,
+    ownerId: user.id,
+    researchRunId: latestResearch?.id ?? null,
+  });
+
+  const { error } = await supabase.from("growth_actions").insert(actions);
+
+  if (error) {
+    redirectWithError(pathname, error.message);
+  }
+
+  revalidatePath(pathname);
+  redirect(`${pathname}?success=actions`);
+}
+
+export async function updateGrowthActionStatus(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const projectId = getString(formData, "project_id");
+  const actionId = getString(formData, "action_id");
+  const status = getString(formData, "status") as GrowthActionStatus;
+  const pathname = `/projects/${projectId}/actions`;
+
+  if (!projectId || !actionId) {
+    redirectWithError("/projects", "Action is required.");
+  }
+
+  if (!["approved", "rejected", "completed"].includes(status)) {
+    redirectWithError(pathname, "Unsupported action status.");
+  }
+
+  const { error } = await supabase
+    .from("growth_actions")
+    .update({ status })
+    .eq("id", actionId)
+    .eq("owner_id", user.id);
+
+  if (error) {
+    redirectWithError(pathname, error.message);
+  }
+
+  revalidatePath(pathname);
+  redirect(`${pathname}?success=status`);
 }

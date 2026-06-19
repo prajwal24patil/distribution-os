@@ -16,7 +16,7 @@ DistributionOS should answer this every week:
 
 ## Current Repository State
 
-Status: CareerScore Product Memory module complete.
+Status: Research Engine and Action Generator complete.
 
 Current known facts:
 
@@ -25,15 +25,75 @@ Current known facts:
 - Dashboard MVP routes: `/`, `/projects`, `/projects/new`, `/projects/[id]`
 - Dashboard data source: Supabase `projects` table
 - Authentication: Supabase email/password
-- Protected routes: `/`, `/projects`, `/projects/new`, `/projects/[id]`, `/projects/[id]/memory`
+- Protected routes: `/`, `/projects`, `/projects/new`, `/projects/[id]`, `/projects/[id]/memory`, `/projects/[id]/research`, `/projects/[id]/actions`
 - Backend skeleton: `backend` using FastAPI
-- Database directory: includes `projects` and `product_memory` migrations
+- Database directory: includes `projects`, `product_memory`, `research_runs`, and `growth_actions` migrations
 - Tests: backend health test only
 - Infrastructure: Dockerfiles and local compose file only
 - CI: GitHub Actions for frontend and backend quality gates
 - First customer: CareerScore
 - Primary goal: build a maintainable AI-assisted distribution platform
-- Current phase: authenticated project CRUD plus product memory MVP
+- Current phase: authenticated project CRUD plus deterministic research and action generation
+
+## Research Engine and Action Generator Notes
+
+Created deterministic local research and growth action generation for project-scoped growth planning.
+
+Included:
+
+- `research_runs` Supabase table migration
+- `growth_actions` Supabase table migration
+- owner-scoped RLS policies for research runs
+- owner-scoped RLS policies for growth actions
+- typed Supabase contracts for research and actions
+- deterministic local research helper
+- deterministic local growth action helper
+- `/projects/[id]/research` protected route
+- `/projects/[id]/actions` protected route
+- “Run Research” button
+- “Generate Growth Actions” button
+- action status updates: approve, reject, complete
+- navigation links from project detail to Product Memory, Research, and Actions
+- loading, empty, error, and success states
+
+Research output includes:
+
+- audience insights
+- competitor insights
+- keyword opportunities
+- channel opportunities
+- pain points
+- positioning angles
+- assumptions
+- confidence score
+
+Growth actions generated:
+
+- 5 LinkedIn post ideas
+- 5 SEO blog ideas
+- 3 WhatsApp/community messages
+- 3 landing page improvements
+- 3 founder next actions
+
+Explicitly not included:
+
+- OpenAI
+- RAG
+- agents
+- publishing
+- external APIs
+- external posting
+- external emailing
+- analytics automation
+- changes to existing auth behavior
+- changes to existing project CRUD behavior
+- changes to existing product memory behavior
+
+Last research/action verification:
+
+- `npm run lint`
+- `npm run typecheck`
+- `npm run build`
 
 ## Product Memory Module Notes
 

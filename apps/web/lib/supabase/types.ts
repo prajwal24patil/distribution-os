@@ -78,6 +78,73 @@ export type ProductMemoryInsert = {
 
 export type ProductMemoryUpdate = Partial<Omit<ProductMemoryInsert, "project_id" | "owner_id">>;
 
+export type ResearchRunRow = {
+  id: string;
+  project_id: string;
+  owner_id: string;
+  audience_insights: string;
+  competitor_insights: string;
+  keyword_opportunities: string;
+  channel_opportunities: string;
+  pain_points: string;
+  positioning_angles: string;
+  assumptions: string;
+  confidence_score: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ResearchRunInsert = {
+  project_id: string;
+  owner_id: string;
+  audience_insights: string;
+  competitor_insights: string;
+  keyword_opportunities: string;
+  channel_opportunities: string;
+  pain_points: string;
+  positioning_angles: string;
+  assumptions: string;
+  confidence_score: number;
+};
+
+export type ResearchRunUpdate = Partial<Omit<ResearchRunInsert, "project_id" | "owner_id">>;
+
+export type GrowthActionCategory =
+  | "linkedin_post"
+  | "seo_blog"
+  | "whatsapp_community"
+  | "landing_page"
+  | "founder_next_action";
+
+export type GrowthActionStatus = "pending" | "approved" | "rejected" | "completed";
+
+export type GrowthActionRow = {
+  id: string;
+  project_id: string;
+  research_run_id: string | null;
+  owner_id: string;
+  category: GrowthActionCategory;
+  title: string;
+  description: string;
+  status: GrowthActionStatus;
+  created_at: string;
+  updated_at: string;
+};
+
+export type GrowthActionInsert = {
+  project_id: string;
+  research_run_id?: string | null;
+  owner_id: string;
+  category: GrowthActionCategory;
+  title: string;
+  description?: string;
+  status?: GrowthActionStatus;
+};
+
+export type GrowthActionUpdate = Partial<
+  Omit<GrowthActionInsert, "project_id" | "research_run_id" | "owner_id">
+>;
+
 export type Database = {
   public: {
     Tables: {
@@ -97,6 +164,41 @@ export type Database = {
             columns: ["project_id"];
             isOneToOne: false;
             referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      research_runs: {
+        Row: ResearchRunRow;
+        Insert: ResearchRunInsert;
+        Update: ResearchRunUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "research_runs_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      growth_actions: {
+        Row: GrowthActionRow;
+        Insert: GrowthActionInsert;
+        Update: GrowthActionUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "growth_actions_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "growth_actions_research_run_id_fkey";
+            columns: ["research_run_id"];
+            isOneToOne: false;
+            referencedRelation: "research_runs";
             referencedColumns: ["id"];
           },
         ];

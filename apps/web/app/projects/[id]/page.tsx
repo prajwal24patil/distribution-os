@@ -47,12 +47,26 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
           </div>
           <div className="flex flex-col items-start gap-3 md:items-end">
             <StatusBadge status={project.status} />
-            <Link
-              href={`/projects/${project.id}/memory`}
-              className="inline-flex h-10 items-center justify-center rounded bg-neutral-950 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800"
-            >
-              Product Memory
-            </Link>
+            <div className="flex flex-wrap gap-2 md:justify-end">
+              <Link
+                href={`/projects/${project.id}/memory`}
+                className="inline-flex h-10 items-center justify-center rounded bg-neutral-950 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800"
+              >
+                Product Memory
+              </Link>
+              <Link
+                href={`/projects/${project.id}/research`}
+                className="inline-flex h-10 items-center justify-center rounded border border-neutral-300 bg-white px-4 text-sm font-semibold text-neutral-800 transition hover:bg-neutral-100"
+              >
+                Research
+              </Link>
+              <Link
+                href={`/projects/${project.id}/actions`}
+                className="inline-flex h-10 items-center justify-center rounded border border-neutral-300 bg-white px-4 text-sm font-semibold text-neutral-800 transition hover:bg-neutral-100"
+              >
+                Actions
+              </Link>
+            </div>
           </div>
         </div>
       </section>
