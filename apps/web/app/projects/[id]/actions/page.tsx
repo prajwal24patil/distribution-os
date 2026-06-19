@@ -122,13 +122,22 @@ export default async function ActionsPage({ params, searchParams }: ActionsPageP
             <h2 className="mt-2 text-3xl font-semibold text-neutral-950">{project.name}</h2>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-neutral-700">
               Generate deterministic growth actions from saved project, product memory, and the
-              latest local research run.
+              latest local research run. Generated actions start as pending drafts and move through
+              the approval queue before manual execution.
             </p>
           </div>
-          <form action={generateGrowthActions}>
-            <input name="project_id" type="hidden" value={project.id} />
-            <SubmitButton idleLabel="Generate Growth Actions" pendingLabel="Generating..." />
-          </form>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Link
+              href={`/projects/${project.id}/approvals`}
+              className="inline-flex h-10 items-center justify-center rounded border border-neutral-300 bg-white px-4 text-sm font-semibold text-neutral-800 transition hover:bg-neutral-100"
+            >
+              Approval Queue
+            </Link>
+            <form action={generateGrowthActions}>
+              <input name="project_id" type="hidden" value={project.id} />
+              <SubmitButton idleLabel="Generate Growth Actions" pendingLabel="Generating..." />
+            </form>
+          </div>
         </div>
       </section>
 
@@ -224,4 +233,3 @@ export default async function ActionsPage({ params, searchParams }: ActionsPageP
     </div>
   );
 }
-

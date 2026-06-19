@@ -1,9 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { deleteProject, updateProject } from "@/app/actions";
+import { deleteProject, generateNextRecommendation, updateProject } from "@/app/actions";
+import { SubmitButton } from "@/components/ui/SubmitButton";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { formatDate } from "@/lib/projects";
 import { requireUser } from "@/lib/auth";
+import type {
+  ExecutionLogRow,
+  GrowthActionCategory,
+  GrowthActionRow,
+} from "@/lib/supabase/types";
 
 type ProjectDetailPageProps = {
   params: Promise<{
@@ -11,13 +17,96 @@ type ProjectDetailPageProps = {
   }>;
   searchParams: Promise<{
     error?: string;
+    success?: string;
   }>;
 };
 
+type ResultAction = GrowthActionRow & {
+  execution_logs?: ExecutionLogRow[];
+};
+
+function hasSuccessfulChannel(actions: ResultAction[], category: GrowthActionCategory) {
+  return actions.some(
+    (action) =>
+      action.category === category &&
+      (action.execution_logs ?? []).some((log) => log.result_status === "success"),
+  );
+}
+
+function buildVisibleRecommendation(researchCount: number, actions: ResultAction[]) {
+  const executionLogs = actions.flatMap((action) => action.execution_logs ?? []);
+  const approvedActions = actions.filter((action) => action.status === "approved");
+  const pendingAction = actions.find((action) => action.status === "pending");
+
+  if (researchCount === 0) {
+    return "Run Research to create the first audience, channel, and positioning analysis.";
+  }
+
+  if (actions.length === 0) {
+    return "Generate Growth Actions from the latest research run.";
+  }
+
+  if (approvedActions.length === 0 && executionLogs.length === 0) {
+    return pendingAction
+      ? `Approve the top priority action: ${pendingAction.title}.`
+      : "Approve one draft action before execution.";
+  }
+
+  if (approvedActions.length > 0 && executionLogs.length === 0) {
+    return `Manually execute one approved action: ${approvedActions[0].title}.`;
+  }
+
+  if (executionLogs.some((log) => log.result_status === "pending")) {
+    return "Check pending execution results after 24 hours and log the learning.";
+  }
+
+  if (hasSuccessfulChannel(actions, "linkedin_post")) {
+    return "Generate more LinkedIn founder posts based on the winning angle.";
+  }
+
+  if (hasSuccessfulChannel(actions, "seo_blog")) {
+    return "Generate more SEO blog ideas around the topic that worked.";
+  }
+
+  if (hasSuccessfulChannel(actions, "whatsapp_community")) {
+    return "Run more community distribution using the message that resonated.";
+  }
+
+  if (executionLogs.some((log) => log.result_status === "failed")) {
+    return "Change the angle or channel, then retry the failed action manually.";
+  }
+
+  return "Review the latest learning and choose the next approved action to execute.";
+}
+
+function getBestChannel(logs: ExecutionLogRow[]) {
+  const successfulLogs = logs.filter((log) => log.result_status === "success");
+
+  if (successfulLogs.length === 0) {
+    return "No winning channel yet.";
+  }
+
+  const counts = successfulLogs.reduce<Record<string, number>>((accumulator, log) => {
+    accumulator[log.channel] = (accumulator[log.channel] ?? 0) + 1;
+    return accumulator;
+  }, {});
+
+  const [channel] = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+  return channel;
+}
+
+function getLatestLearning(logs: ExecutionLogRow[]) {
+  const latestLog = [...logs]
+    .sort((a, b) => new Date(b.executed_at).getTime() - new Date(a.executed_at).getTime())
+    .find((log) => log.learning || log.notes);
+
+  return latestLog?.learning || latestLog?.notes || "No learning logged yet.";
+}
+
 export default async function ProjectDetailPage({ params, searchParams }: ProjectDetailPageProps) {
   const { id } = await params;
-  const { error: actionError } = await searchParams;
-  const { supabase } = await requireUser();
+  const { error: actionError, success } = await searchParams;
+  const { supabase, user } = await requireUser();
   const { data: project, error } = await supabase
     .from("projects")
     .select("*")
@@ -27,6 +116,41 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
   if (error || !project) {
     notFound();
   }
+
+  const { count: researchCount, error: researchCountError } = await supabase
+    .from("research_runs")
+    .select("id", { count: "exact", head: true })
+    .eq("project_id", project.id)
+    .eq("owner_id", user.id);
+
+  const { data: actions, error: actionsError } = await supabase
+    .from("growth_actions")
+    .select("*, execution_logs(*)")
+    .eq("project_id", project.id)
+    .eq("owner_id", user.id)
+    .order("created_at", { ascending: true });
+
+  const typedActions = (actions ?? []) as ResultAction[];
+  const executionLogs = typedActions.flatMap((action) => action.execution_logs ?? []);
+  const successfulActionIds = new Set(
+    typedActions
+      .filter((action) => action.status === "completed")
+      .map((action) => action.id),
+  );
+  const failedActionIds = new Set<string>();
+
+  for (const log of executionLogs) {
+    if (log.result_status === "success") {
+      successfulActionIds.add(log.growth_action_id);
+    }
+
+    if (log.result_status === "failed") {
+      failedActionIds.add(log.growth_action_id);
+    }
+  }
+
+  const visibleRecommendation =
+    project.next_recommendation || buildVisibleRecommendation(researchCount ?? 0, typedActions);
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
@@ -49,8 +173,14 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
             <StatusBadge status={project.status} />
             <div className="flex flex-wrap gap-2 md:justify-end">
               <Link
-                href={`/projects/${project.id}/memory`}
+                href={`/projects/${project.id}/autopilot`}
                 className="inline-flex h-10 items-center justify-center rounded bg-neutral-950 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800"
+              >
+                Autopilot
+              </Link>
+              <Link
+                href={`/projects/${project.id}/memory`}
+                className="inline-flex h-10 items-center justify-center rounded border border-neutral-300 bg-white px-4 text-sm font-semibold text-neutral-800 transition hover:bg-neutral-100"
               >
                 Product Memory
               </Link>
@@ -66,6 +196,12 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
               >
                 Actions
               </Link>
+              <Link
+                href={`/projects/${project.id}/approvals`}
+                className="inline-flex h-10 items-center justify-center rounded border border-neutral-300 bg-white px-4 text-sm font-semibold text-neutral-800 transition hover:bg-neutral-100"
+              >
+                Approvals
+              </Link>
             </div>
           </div>
         </div>
@@ -74,6 +210,18 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
       {actionError ? (
         <div className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
           {actionError}
+        </div>
+      ) : null}
+
+      {success === "recommendation" ? (
+        <div className="rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          Next recommendation generated.
+        </div>
+      ) : null}
+
+      {researchCountError || actionsError ? (
+        <div className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          Growth results failed to load: {researchCountError?.message || actionsError?.message}
         </div>
       ) : null}
 
@@ -89,6 +237,97 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
         <div className="rounded border border-neutral-300 bg-white p-5">
           <p className="text-sm font-medium text-neutral-500">Content Items</p>
           <p className="mt-3 text-xl font-semibold text-neutral-950">{project.content_items}</p>
+        </div>
+      </section>
+
+      <section className="rounded border border-neutral-300 bg-white p-5">
+        <div className="flex flex-col gap-4 border-b border-neutral-200 pb-5 md:flex-row md:items-start md:justify-between">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+              Growth Results
+            </p>
+            <h3 className="mt-2 text-xl font-semibold text-neutral-950">
+              Current growth machine state
+            </h3>
+          </div>
+          <form action={generateNextRecommendation}>
+            <input name="project_id" type="hidden" value={project.id} />
+            <SubmitButton
+              idleLabel="Generate Next Recommendation"
+              pendingLabel="Generating..."
+              className="h-10 rounded bg-neutral-950 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-neutral-500"
+            />
+          </form>
+        </div>
+
+        <div className="mt-5 grid gap-4 md:grid-cols-3">
+          <div className="rounded border border-neutral-200 bg-neutral-50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+              Research runs
+            </p>
+            <p className="mt-2 text-2xl font-semibold text-neutral-950">{researchCount ?? 0}</p>
+          </div>
+          <div className="rounded border border-neutral-200 bg-neutral-50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+              Actions generated
+            </p>
+            <p className="mt-2 text-2xl font-semibold text-neutral-950">{typedActions.length}</p>
+          </div>
+          <div className="rounded border border-neutral-200 bg-neutral-50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+              Approved actions
+            </p>
+            <p className="mt-2 text-2xl font-semibold text-neutral-950">
+              {typedActions.filter((action) => action.status === "approved").length}
+            </p>
+          </div>
+          <div className="rounded border border-neutral-200 bg-neutral-50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+              Executed actions
+            </p>
+            <p className="mt-2 text-2xl font-semibold text-neutral-950">{executionLogs.length}</p>
+          </div>
+          <div className="rounded border border-neutral-200 bg-neutral-50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+              Completed / success
+            </p>
+            <p className="mt-2 text-2xl font-semibold text-neutral-950">
+              {successfulActionIds.size}
+            </p>
+          </div>
+          <div className="rounded border border-neutral-200 bg-neutral-50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+              Failed actions
+            </p>
+            <p className="mt-2 text-2xl font-semibold text-neutral-950">
+              {failedActionIds.size}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-3">
+          <div className="rounded border border-neutral-200 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+              Best channel so far
+            </p>
+            <p className="mt-2 text-sm leading-6 text-neutral-700">
+              {getBestChannel(executionLogs)}
+            </p>
+          </div>
+          <div className="rounded border border-neutral-200 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+              Latest learning
+            </p>
+            <p className="mt-2 text-sm leading-6 text-neutral-700">
+              {getLatestLearning(executionLogs)}
+            </p>
+          </div>
+          <div className="rounded border border-neutral-200 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+              Next best action
+            </p>
+            <p className="mt-2 text-sm leading-6 text-neutral-700">{visibleRecommendation}</p>
+          </div>
         </div>
       </section>
 

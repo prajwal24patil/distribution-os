@@ -16,7 +16,7 @@ DistributionOS should answer this every week:
 
 ## Current Repository State
 
-Status: Research Engine and Action Generator complete.
+Status: CareerScore Growth Autopilot MVP page complete.
 
 Current known facts:
 
@@ -25,15 +25,184 @@ Current known facts:
 - Dashboard MVP routes: `/`, `/projects`, `/projects/new`, `/projects/[id]`
 - Dashboard data source: Supabase `projects` table
 - Authentication: Supabase email/password
-- Protected routes: `/`, `/projects`, `/projects/new`, `/projects/[id]`, `/projects/[id]/memory`, `/projects/[id]/research`, `/projects/[id]/actions`
+- Protected routes: `/`, `/projects`, `/projects/new`, `/projects/[id]`, `/projects/[id]/memory`, `/projects/[id]/research`, `/projects/[id]/actions`, `/projects/[id]/approvals`, `/projects/[id]/autopilot`
 - Backend skeleton: `backend` using FastAPI
-- Database directory: includes `projects`, `product_memory`, `research_runs`, and `growth_actions` migrations
+- Database directory: includes `projects`, `product_memory`, `research_runs`, `growth_actions`, `execution_logs`, and result recommendation migrations
 - Tests: backend health test only
 - Infrastructure: Dockerfiles and local compose file only
 - CI: GitHub Actions for frontend and backend quality gates
 - First customer: CareerScore
 - Primary goal: build a maintainable AI-assisted distribution platform
-- Current phase: authenticated project CRUD plus deterministic research and action generation
+- Current phase: unified manual growth autopilot MVP for CareerScore
+
+## CareerScore Growth Autopilot MVP Notes
+
+Created a single project-scoped Autopilot page that combines the current manual DistributionOS workflow into one control center.
+
+Included:
+
+- `/projects/[id]/autopilot` protected route
+- Autopilot link on project detail page
+- Product Memory status
+- Research status
+- Actions status
+- Approval status
+- Execution status
+- Results status
+- Growth Score from 0 to 100
+- Autopilot Status:
+  - Not ready
+  - Ready for research
+  - Ready for action
+  - Execution active
+  - Learning mode
+- state-aware main CTA:
+  - Complete Product Memory
+  - Run Research
+  - Generate Growth Actions
+  - Approve Best Actions
+  - Execute Approved Action
+  - Add Result
+  - Generate Next Recommendation
+- Growth Plan Today section with top 3 non-rejected actions
+- action title, channel, reason, expected outcome, and status
+- next best action display using saved recommendation or deterministic local fallback
+- return path support for `Generate Next Recommendation` so Autopilot stays on the Autopilot page
+
+Growth Score formula:
+
+- product memory completed: +20
+- research exists: +20
+- actions generated: +20
+- approved action exists: +15
+- executed action exists: +15
+- result or learning recorded: +10
+
+Explicitly not included:
+
+- OpenAI
+- RAG
+- auto-posting
+- external APIs
+- extra dashboards
+- external execution
+- fake metrics
+- changes to database schema
+- changes to auth, project CRUD, product memory, research, actions, or approvals behavior beyond the recommendation return path
+
+Last Autopilot verification:
+
+- `npm run lint`
+- `npm run typecheck`
+- `npm run build`
+
+## Results Dashboard and Next Best Action Notes
+
+Completed the final MVP chunk that turns research, generated actions, approvals, and manual execution logs into a simple growth results view on the project detail page.
+
+Included:
+
+- Growth Results section on `/projects/[id]`
+- total research runs
+- total actions generated
+- approved actions count
+- executed actions count
+- completed/success actions count
+- failed actions count
+- best channel so far based on successful manual execution logs
+- latest learning based on manual execution logs
+- next best action display
+- `Generate Next Recommendation` button
+- deterministic next recommendation server action
+- `next_recommendation` project field
+- manual result fields on execution logs:
+  - `result_metric`
+  - `result_value`
+  - `learning`
+  - `completed_at`
+- migration SQL for result and recommendation fields
+- approval execution form fields for result metric, result value, and learning
+
+Recommendation logic:
+
+- no research exists: recommend running research
+- research exists but no actions: recommend generating growth actions
+- actions exist but none are approved or executed: recommend approving the top pending action
+- approved actions exist but none are executed: recommend manually executing an approved action
+- pending execution results exist: recommend checking results after 24 hours
+- LinkedIn success exists: recommend more LinkedIn founder posts
+- SEO success exists: recommend more SEO blog ideas
+- WhatsApp/community success exists: recommend more community distribution
+- failed execution exists: recommend changing angle/channel and retrying
+
+Explicitly not included:
+
+- OpenAI
+- RAG
+- auto-posting
+- external APIs
+- extra dashboards
+- fake metrics
+- automated analytics
+- changes to existing auth behavior
+- changes to existing project CRUD behavior
+- changes to existing product memory behavior
+- changes to existing research/action generation behavior
+- changes to manual approval/execution safety boundaries
+
+Last results dashboard verification:
+
+- `npm run lint`
+- `npm run typecheck`
+- `npm run build`
+
+## Approval Queue and Manual Execution Log Notes
+
+Created the controlled execution layer that moves generated growth actions into approval and manual execution tracking.
+
+Included:
+
+- `execution_logs` Supabase table migration
+- owner-scoped RLS policies for execution logs
+- typed Supabase contract for execution logs
+- `/projects/[id]/approvals` protected route
+- approval queue grouped by action status
+- pending draft actions waiting for approval
+- approved actions ready for manual execution
+- completed actions with execution logs
+- rejected actions
+- approve action control
+- reject action control
+- manual execution logging form
+- execution URL field
+- execution notes field
+- result status field: pending, success, failed, needs follow-up
+- completed status update after manual execution is logged
+- loading, empty, error, and success states
+- project detail navigation: Product Memory, Research, Actions, Approvals
+- actions page link into the approval queue
+
+Explicitly not included:
+
+- automatic publishing
+- email sending
+- social media APIs
+- fake metrics
+- external integrations
+- OpenAI
+- RAG
+- agents
+- analytics automation
+- changes to existing auth behavior
+- changes to existing project CRUD behavior
+- changes to existing product memory behavior
+- changes to existing research/action generation behavior
+
+Last approval/execution verification:
+
+- `npm run lint`
+- `npm run typecheck`
+- `npm run build`
 
 ## Research Engine and Action Generator Notes
 

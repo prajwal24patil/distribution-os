@@ -14,6 +14,7 @@ export type ProjectRow = {
   experiments: number;
   content_items: number;
   next_action: string;
+  next_recommendation: string;
   created_at: string;
   updated_at: string;
 };
@@ -31,6 +32,7 @@ export type ProjectInsert = {
   experiments?: number;
   content_items?: number;
   next_action?: string;
+  next_recommendation?: string;
 };
 
 export type ProjectUpdate = Partial<Omit<ProjectInsert, "user_id">>;
@@ -145,6 +147,49 @@ export type GrowthActionUpdate = Partial<
   Omit<GrowthActionInsert, "project_id" | "research_run_id" | "owner_id">
 >;
 
+export type ExecutionResultStatus = "pending" | "success" | "failed" | "needs_follow_up";
+
+export type ExecutionLogRow = {
+  id: string;
+  project_id: string;
+  owner_id: string;
+  growth_action_id: string;
+  execution_type: string;
+  channel: string;
+  executed_at: string;
+  executed_by: string;
+  external_url: string;
+  notes: string;
+  result_metric: string;
+  result_value: string;
+  learning: string;
+  result_status: ExecutionResultStatus;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ExecutionLogInsert = {
+  project_id: string;
+  owner_id: string;
+  growth_action_id: string;
+  execution_type?: string;
+  channel: string;
+  executed_at?: string;
+  executed_by?: string;
+  external_url?: string;
+  notes?: string;
+  result_metric?: string;
+  result_value?: string;
+  learning?: string;
+  result_status?: ExecutionResultStatus;
+  completed_at?: string | null;
+};
+
+export type ExecutionLogUpdate = Partial<
+  Omit<ExecutionLogInsert, "project_id" | "owner_id" | "growth_action_id">
+>;
+
 export type Database = {
   public: {
     Tables: {
@@ -199,6 +244,27 @@ export type Database = {
             columns: ["research_run_id"];
             isOneToOne: false;
             referencedRelation: "research_runs";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      execution_logs: {
+        Row: ExecutionLogRow;
+        Insert: ExecutionLogInsert;
+        Update: ExecutionLogUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "execution_logs_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "execution_logs_growth_action_id_fkey";
+            columns: ["growth_action_id"];
+            isOneToOne: false;
+            referencedRelation: "growth_actions";
             referencedColumns: ["id"];
           },
         ];
