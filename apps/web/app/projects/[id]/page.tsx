@@ -45,7 +45,15 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
             <h2 className="mt-2 text-3xl font-semibold text-neutral-950">{project.name}</h2>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-neutral-700">{project.summary}</p>
           </div>
-          <StatusBadge status={project.status} />
+          <div className="flex flex-col items-start gap-3 md:items-end">
+            <StatusBadge status={project.status} />
+            <Link
+              href={`/projects/${project.id}/memory`}
+              className="inline-flex h-10 items-center justify-center rounded bg-neutral-950 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800"
+            >
+              Product Memory
+            </Link>
+          </div>
         </div>
       </section>
 

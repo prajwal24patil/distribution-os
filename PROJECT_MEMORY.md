@@ -16,7 +16,7 @@ DistributionOS should answer this every week:
 
 ## Current Repository State
 
-Status: Supabase auth and project persistence complete.
+Status: CareerScore Product Memory module complete.
 
 Current known facts:
 
@@ -25,15 +25,72 @@ Current known facts:
 - Dashboard MVP routes: `/`, `/projects`, `/projects/new`, `/projects/[id]`
 - Dashboard data source: Supabase `projects` table
 - Authentication: Supabase email/password
-- Protected routes: `/`, `/projects`, `/projects/new`, `/projects/[id]`
+- Protected routes: `/`, `/projects`, `/projects/new`, `/projects/[id]`, `/projects/[id]/memory`
 - Backend skeleton: `backend` using FastAPI
-- Database directory: includes `projects` table migration only
+- Database directory: includes `projects` and `product_memory` migrations
 - Tests: backend health test only
 - Infrastructure: Dockerfiles and local compose file only
 - CI: GitHub Actions for frontend and backend quality gates
 - First customer: CareerScore
 - Primary goal: build a maintainable AI-assisted distribution platform
-- Current phase: authenticated project CRUD MVP
+- Current phase: authenticated project CRUD plus product memory MVP
+
+## Product Memory Module Notes
+
+Created the first project-scoped Product Memory module for storing the information DistributionOS needs to research, position, and grow a product.
+
+Included:
+
+- `product_memory` Supabase table migration
+- project-scoped product memory records
+- owner-scoped row-level security policies
+- typed Supabase table contract
+- `/projects/[id]/memory` protected route
+- editable product memory form
+- server-side validation for required product name and summary
+- create and update behavior through one save action
+- empty state for projects without product memory
+- loading state for the product memory route
+- error state for failed loads or failed saves
+- success confirmation after save
+- “Product Memory” link from project detail
+
+Product memory fields:
+
+- product name
+- website URL
+- product summary
+- target users
+- primary problem
+- value proposition
+- pricing
+- current stage
+- primary goal
+- target countries
+- preferred channels
+- competitors
+- brand voice
+- constraints
+
+Explicitly not included:
+
+- AI
+- RAG
+- agents
+- content generation
+- publishing
+- analytics
+- external integrations
+- CareerScore automation
+- hardcoded CareerScore product memory values
+
+Last product memory verification:
+
+- `npm run format`
+- `npm run lint`
+- `npm run typecheck`
+- `pytest`
+- `npm run build`
 
 ## Supabase Auth and Project Persistence Notes
 

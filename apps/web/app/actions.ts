@@ -19,6 +19,16 @@ function redirectWithError(pathname: string, message: string): never {
   redirect(`${pathname}?error=${encodeURIComponent(message)}`);
 }
 
+function getRequiredString(formData: FormData, key: string, label: string, pathname: string) {
+  const value = getString(formData, key);
+
+  if (!value) {
+    redirectWithError(pathname, `${label} is required.`);
+  }
+
+  return value;
+}
+
 export async function login(formData: FormData) {
   const supabase = await createClient();
   const email = getString(formData, "email");
@@ -145,4 +155,73 @@ export async function deleteProject(formData: FormData) {
   revalidatePath("/");
   revalidatePath("/projects");
   redirect("/projects");
+}
+
+export async function saveProductMemory(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const projectId = getString(formData, "project_id");
+
+  if (!projectId) {
+    redirectWithError("/projects", "Project is required.");
+  }
+
+  const memoryId = getString(formData, "memory_id");
+  const pathname = `/projects/${projectId}/memory`;
+  const productName = getRequiredString(formData, "product_name", "Product name", pathname);
+  const productSummary = getRequiredString(
+    formData,
+    "product_summary",
+    "Product summary",
+    pathname,
+  );
+
+  const { data: project, error: projectError } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("id", projectId)
+    .single();
+
+  if (projectError || !project) {
+    redirectWithError(pathname, "Project not found.");
+  }
+
+  const payload = {
+    product_name: productName,
+    website_url: getString(formData, "website_url"),
+    product_summary: productSummary,
+    target_users: getString(formData, "target_users"),
+    primary_problem: getString(formData, "primary_problem"),
+    value_proposition: getString(formData, "value_proposition"),
+    pricing: getString(formData, "pricing"),
+    current_stage: getString(formData, "current_stage"),
+    primary_goal: getString(formData, "primary_goal"),
+    target_countries: getString(formData, "target_countries"),
+    preferred_channels: getString(formData, "preferred_channels"),
+    competitors: getString(formData, "competitors"),
+    brand_voice: getString(formData, "brand_voice"),
+    constraints: getString(formData, "constraints"),
+  };
+
+  const result = memoryId
+    ? await supabase.from("product_memory").update(payload).eq("id", memoryId)
+    : await supabase.from("product_memory").insert({
+        ...payload,
+        project_id: projectId,
+        owner_id: user.id,
+      });
+
+  if (result.error) {
+    redirectWithError(pathname, result.error.message);
+  }
+
+  revalidatePath(pathname);
+  redirect(`${pathname}?saved=1`);
 }

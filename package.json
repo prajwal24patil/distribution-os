@@ -11,7 +11,8 @@
     "lint": "npm run lint --workspace apps/web",
     "format": "prettier --check .",
     "format:write": "prettier --write .",
-    "typecheck": "npm run typecheck --workspace apps/web"
+    "typecheck": "npm run typecheck --workspace apps/web",
+    "verify": "node scripts/verify.mjs"
   },
   "devDependencies": {
     "next": "^15.5.0",
