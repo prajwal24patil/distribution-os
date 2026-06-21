@@ -5,11 +5,7 @@ import { SubmitButton } from "@/components/ui/SubmitButton";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { formatDate } from "@/lib/projects";
 import { requireUser } from "@/lib/auth";
-import type {
-  ExecutionLogRow,
-  GrowthActionCategory,
-  GrowthActionRow,
-} from "@/lib/supabase/types";
+import type { ExecutionLogRow, GrowthActionCategory, GrowthActionRow } from "@/lib/supabase/types";
 
 type ProjectDetailPageProps = {
   params: Promise<{
@@ -133,9 +129,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
   const typedActions = (actions ?? []) as ResultAction[];
   const executionLogs = typedActions.flatMap((action) => action.execution_logs ?? []);
   const successfulActionIds = new Set(
-    typedActions
-      .filter((action) => action.status === "completed")
-      .map((action) => action.id),
+    typedActions.filter((action) => action.status === "completed").map((action) => action.id),
   );
   const failedActionIds = new Set<string>();
 
@@ -179,29 +173,28 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
                 Autopilot
               </Link>
               <Link
-                href={`/projects/${project.id}/memory`}
+                href={`/projects/${project.id}/results`}
                 className="inline-flex h-10 items-center justify-center rounded border border-neutral-300 bg-white px-4 text-sm font-semibold text-neutral-800 transition hover:bg-neutral-100"
               >
-                Product Memory
+                Results
               </Link>
               <Link
-                href={`/projects/${project.id}/research`}
+                href={`/projects/${project.id}/settings`}
                 className="inline-flex h-10 items-center justify-center rounded border border-neutral-300 bg-white px-4 text-sm font-semibold text-neutral-800 transition hover:bg-neutral-100"
               >
-                Research
+                Settings
               </Link>
-              <Link
-                href={`/projects/${project.id}/actions`}
-                className="inline-flex h-10 items-center justify-center rounded border border-neutral-300 bg-white px-4 text-sm font-semibold text-neutral-800 transition hover:bg-neutral-100"
-              >
-                Actions
-              </Link>
-              <Link
-                href={`/projects/${project.id}/approvals`}
-                className="inline-flex h-10 items-center justify-center rounded border border-neutral-300 bg-white px-4 text-sm font-semibold text-neutral-800 transition hover:bg-neutral-100"
-              >
-                Approvals
-              </Link>
+            </div>
+            <div className="flex flex-wrap gap-2 text-xs md:justify-end">
+              {["memory", "research", "actions", "approvals", "campaigns"].map((path) => (
+                <Link
+                  key={path}
+                  href={`/projects/${project.id}/${path}`}
+                  className="font-semibold capitalize text-neutral-500 hover:text-neutral-950"
+                >
+                  {path}
+                </Link>
+              ))}
             </div>
           </div>
         </div>
@@ -215,7 +208,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
 
       {success === "recommendation" ? (
         <div className="rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          Next recommendation generated.
+          Next fix generated.
         </div>
       ) : null}
 
@@ -253,7 +246,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
           <form action={generateNextRecommendation}>
             <input name="project_id" type="hidden" value={project.id} />
             <SubmitButton
-              idleLabel="Generate Next Recommendation"
+              idleLabel="Generate Next Fix"
               pendingLabel="Generating..."
               className="h-10 rounded bg-neutral-950 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-neutral-500"
             />
@@ -299,9 +292,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
             <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
               Failed actions
             </p>
-            <p className="mt-2 text-2xl font-semibold text-neutral-950">
-              {failedActionIds.size}
-            </p>
+            <p className="mt-2 text-2xl font-semibold text-neutral-950">{failedActionIds.size}</p>
           </div>
         </div>
 
@@ -324,7 +315,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
           </div>
           <div className="rounded border border-neutral-200 p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-              Next best action
+              Next execution step
             </p>
             <p className="mt-2 text-sm leading-6 text-neutral-700">{visibleRecommendation}</p>
           </div>

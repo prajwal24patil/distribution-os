@@ -7,9 +7,21 @@ import type { ReactNode } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 const navItems = [
-  { href: "/", label: "Dashboard" },
-  { href: "/projects", label: "Projects" },
-  { href: "/projects/new", label: "New Project" },
+  {
+    href: "/",
+    label: "Autopilot",
+    match: (pathname: string) => pathname === "/" || pathname.includes("/autopilot"),
+  },
+  {
+    href: "/results",
+    label: "Results",
+    match: (pathname: string) => pathname === "/results" || pathname.includes("/results"),
+  },
+  {
+    href: "/settings",
+    label: "Settings",
+    match: (pathname: string) => pathname === "/settings" || pathname.includes("/settings"),
+  },
 ];
 
 type AppShellProps = {
@@ -42,8 +54,7 @@ export function AppShell({ children }: AppShellProps) {
 
           <nav className="flex flex-1 flex-col gap-1 px-3 py-4">
             {navItems.map((item) => {
-              const isActive =
-                item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+              const isActive = item.match(pathname);
 
               return (
                 <Link
@@ -84,8 +95,7 @@ export function AppShell({ children }: AppShellProps) {
             </div>
             <nav className="flex gap-2 overflow-x-auto">
               {navItems.map((item) => {
-                const isActive =
-                  item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+                const isActive = item.match(pathname);
 
                 return (
                   <Link

@@ -12,6 +12,15 @@
     "format": "prettier --check .",
     "format:write": "prettier --write .",
     "typecheck": "npm run typecheck --workspace apps/web",
+    "test:autopilot": "node scripts/test-autopilot-flow.mjs",
+    "test:autonomous-distribution": "node scripts/test-autonomous-distribution.mjs",
+    "test:blog-publisher": "node scripts/test-blog-publisher.mjs",
+    "test:careerscore-webhook": "node scripts/test-careerscore-webhook.mjs",
+    "test:cron-distribution": "node scripts/test-cron-distribution.mjs",
+    "test:dashboard-qc": "node scripts/test-dashboard-qc-agent.mjs",
+    "test:publisher-connections": "node scripts/test-publisher-connections.mjs",
+    "test:publishing-system": "node scripts/test-publishing-system.mjs",
+    "test:system-runner": "node scripts/test-system-test-runner.mjs",
     "verify": "node scripts/verify.mjs"
   },
   "devDependencies": {

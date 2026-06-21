@@ -135,4 +135,3 @@ export default async function ResearchPage({ params, searchParams }: ResearchPag
     </div>
   );
 }
-

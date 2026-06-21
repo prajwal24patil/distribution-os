@@ -1,4 +1,6 @@
 import type {
+  CampaignItemInsert,
+  CampaignType,
   GrowthActionCategory,
   GrowthActionInsert,
   ProductMemoryRow,
@@ -16,6 +18,11 @@ type ActionInput = ResearchInput & {
   researchRunId: string | null;
 };
 
+type CampaignInput = ResearchInput & {
+  campaignId: string;
+  destinationUrl: string;
+};
+
 function value(value: string | null | undefined, fallback: string) {
   const trimmed = value?.trim();
   return trimmed ? trimmed : fallback;
@@ -29,15 +36,56 @@ function productName(memory: ProductMemoryRow | null, project: ProjectRow) {
   return value(memory?.product_name, project.customer || project.name);
 }
 
+function slug(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 60);
+}
+
+function utmLink({
+  baseUrl,
+  source,
+  medium,
+  campaign,
+  content,
+}: {
+  baseUrl: string;
+  source: string;
+  medium: string;
+  campaign: string;
+  content: string;
+}) {
+  const separator = baseUrl.includes("?") ? "&" : "?";
+  const params = new URLSearchParams({
+    utm_source: source,
+    utm_medium: medium,
+    utm_campaign: campaign,
+    utm_content: content,
+  });
+
+  return `${baseUrl}${separator}${params.toString()}`;
+}
+
 export function buildResearchRun({ project, memory, ownerId }: ResearchInput): ResearchRunInsert {
   const name = productName(memory, project);
-  const targetUsers = value(memory?.target_users, "the highest-intent users described in product memory");
+  const targetUsers = value(
+    memory?.target_users,
+    "the highest-intent users described in product memory",
+  );
   const primaryProblem = value(memory?.primary_problem, "the main unresolved customer problem");
   const valueProposition = value(memory?.value_proposition, project.goal);
   const channels = value(memory?.preferred_channels, project.channel);
-  const competitors = value(memory?.competitors, "direct alternatives, manual workflows, and status quo solutions");
+  const competitors = value(
+    memory?.competitors,
+    "direct alternatives, manual workflows, and status quo solutions",
+  );
   const countries = value(memory?.target_countries, "current priority markets");
-  const constraints = value(memory?.constraints, "solo-founder time and limited distribution bandwidth");
+  const constraints = value(
+    memory?.constraints,
+    "solo-founder time and limited distribution bandwidth",
+  );
   const confidenceScore = memory ? 74 : 52;
 
   return {
@@ -209,3 +257,131 @@ export function buildGrowthActions({
   }));
 }
 
+function campaignItem({
+  campaignType,
+  channel,
+  hook,
+  content,
+  targetAudience,
+  cta,
+  expectedOutcome,
+}: {
+  campaignType: CampaignType;
+  channel: string;
+  hook: string;
+  content: string;
+  targetAudience: string;
+  cta: string;
+  expectedOutcome: string;
+}) {
+  return {
+    campaignType,
+    channel,
+    hook,
+    content,
+    targetAudience,
+    cta,
+    expectedOutcome,
+  };
+}
+
+export function buildViralCampaignItems({
+  project,
+  memory,
+  ownerId,
+  campaignId,
+  destinationUrl,
+}: CampaignInput): CampaignItemInsert[] {
+  const name = productName(memory, project);
+  const targetUsers = value(memory?.target_users, "career-focused users");
+  const websiteUrl = destinationUrl;
+  const campaignSlug = slug(`${name} viral growth`);
+
+  const items = [
+    campaignItem({
+      campaignType: "linkedin_founder_post",
+      channel: "LinkedIn",
+      hook: "Most freshers don't know why they're not getting shortlisted.",
+      content: `Most freshers don't know why they're not getting shortlisted.\n\nThey keep applying, but their resume may be missing proof, skills, or the right positioning.\n\n${name} helps them check career readiness before applying again.`,
+      targetAudience: targetUsers,
+      cta: `Check your ${name} before your next application.`,
+      expectedOutcome: "Founder-led impressions, comments, and qualified profile clicks.",
+    }),
+    campaignItem({
+      campaignType: "seo_blog",
+      channel: "SEO",
+      hook: "Before applying to 100 jobs, check your CareerScore.",
+      content: `Before applying to 100 jobs, check your CareerScore.\n\nLearn what your resume, skills, and job-readiness profile may be missing.`,
+      targetAudience: targetUsers,
+      cta: `Use ${name} to find the gap before applying again.`,
+      expectedOutcome: "Compounding search clicks from high-intent problem queries.",
+    }),
+    campaignItem({
+      campaignType: "whatsapp_community_share",
+      channel: "WhatsApp / Community",
+      hook: "Quick question for freshers applying to jobs",
+      content: `Quick question - are you applying to jobs but not getting callbacks?\n\n${name} checks your career readiness and shows what gap to fix next.`,
+      targetAudience: targetUsers,
+      cta: `Check your score and share it with one friend who is job hunting.`,
+      expectedOutcome: "Direct replies, objection language, and early referral loops.",
+    }),
+    campaignItem({
+      campaignType: "reddit_community_reply",
+      channel: "Reddit / Community",
+      hook: "If you're applying a lot but not getting responses, the problem may not be effort.",
+      content: `If you're applying a lot but not getting responses, the problem may not be effort. It may be positioning, missing proof, or unclear skill match.\n\nI built ${name} to help people see their career readiness score and next gaps to fix.`,
+      targetAudience: targetUsers,
+      cta: `Use ${name} if you want a clearer next step.`,
+      expectedOutcome: "Credible community clicks and qualitative objections.",
+    }),
+    campaignItem({
+      campaignType: "landing_page_headline",
+      channel: "Landing Page",
+      hook: "Know your CareerScore before the market judges your resume.",
+      content: "Know your CareerScore before the market judges your resume.",
+      targetAudience: targetUsers,
+      cta: `Get your ${name} report.`,
+      expectedOutcome: "Higher click-through from visitors already aware of the problem.",
+    }),
+    campaignItem({
+      campaignType: "referral_campaign",
+      channel: "Referral",
+      hook: "Know a friend applying to jobs?",
+      content: `Know someone applying to jobs but stuck? Send them ${name}.`,
+      targetAudience: `${targetUsers} and people who advise them`,
+      cta: `Invite one friend to check their ${name}.`,
+      expectedOutcome: "Warm referral traffic and higher-intent signups.",
+    }),
+  ];
+
+  return items.map((item) => {
+    const utmSource = slug(item.channel);
+    const utmMedium = "organic";
+    const utmContent = slug(item.hook);
+
+    return {
+      campaign_id: campaignId,
+      project_id: project.id,
+      owner_id: ownerId,
+      campaign_type: item.campaignType,
+      channel: item.channel,
+      hook: item.hook,
+      content: item.content,
+      target_audience: item.targetAudience,
+      cta: item.cta,
+      expected_outcome: item.expectedOutcome,
+      utm_source: utmSource,
+      utm_medium: utmMedium,
+      utm_campaign: campaignSlug,
+      utm_content: utmContent,
+      utm_link: utmLink({
+        baseUrl: websiteUrl,
+        source: utmSource,
+        medium: utmMedium,
+        campaign: campaignSlug,
+        content: utmContent,
+      }),
+      status: "draft",
+    };
+  });
+}

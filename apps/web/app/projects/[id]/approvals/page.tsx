@@ -75,7 +75,10 @@ function ActionStatusButton({
 
 function ExecutionForm({ projectId, action }: { projectId: string; action: GrowthActionRow }) {
   return (
-    <form action={markActionManuallyExecuted} className="mt-4 rounded border border-neutral-200 p-4">
+    <form
+      action={markActionManuallyExecuted}
+      className="mt-4 rounded border border-neutral-200 p-4"
+    >
       <input name="project_id" type="hidden" value={projectId} />
       <input name="action_id" type="hidden" value={action.id} />
       <input name="execution_type" type="hidden" value="manual" />
@@ -215,9 +218,7 @@ function ExecutionLogs({ logs }: { logs: ExecutionLogRow[] }) {
               </a>
             ) : null}
             {log.result_metric || log.result_value ? (
-              <p>
-                Result: {[log.result_metric, log.result_value].filter(Boolean).join(" - ")}
-              </p>
+              <p>Result: {[log.result_metric, log.result_value].filter(Boolean).join(" - ")}</p>
             ) : null}
             {log.notes ? <p>{log.notes}</p> : null}
             {log.learning ? <p>Learning: {log.learning}</p> : null}
@@ -270,7 +271,9 @@ function ActionCard({ action, projectId }: { action: ActionWithLogs; projectId: 
         </div>
       </div>
 
-      {action.status === "approved" ? <ExecutionForm action={action} projectId={projectId} /> : null}
+      {action.status === "approved" ? (
+        <ExecutionForm action={action} projectId={projectId} />
+      ) : null}
       <ExecutionLogs logs={logs} />
     </div>
   );
@@ -359,7 +362,9 @@ export default async function ApprovalsPage({ params, searchParams }: ApprovalsP
       ) : (
         <section className="grid gap-5">
           {sections.map((section) => {
-            const sectionActions = typedActions.filter((action) => action.status === section.status);
+            const sectionActions = typedActions.filter(
+              (action) => action.status === section.status,
+            );
 
             return (
               <div key={section.status} className="rounded border border-neutral-300 bg-white">

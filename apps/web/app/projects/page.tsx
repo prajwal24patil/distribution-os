@@ -60,7 +60,7 @@ export default async function ProjectsPage() {
             projects.map((project) => (
               <Link
                 key={project.id}
-                href={`/projects/${project.id}`}
+                href={`/projects/${project.id}/autopilot`}
                 className="grid gap-4 px-5 py-4 transition hover:bg-neutral-50 md:grid-cols-[1.2fr_0.7fr_0.7fr_0.8fr_0.5fr] md:items-center"
               >
                 <div>
