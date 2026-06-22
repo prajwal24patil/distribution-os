@@ -622,7 +622,8 @@ export type ScheduledPostStatus =
   | "published"
   | "failed"
   | "skipped"
-  | "manual_required";
+  | "manual_required"
+  | "auto_publish_ready";
 
 export type ScheduledPostPublishMode = "manual_approval" | "official_auto_publish" | "disabled";
 

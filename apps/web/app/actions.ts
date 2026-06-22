@@ -15,6 +15,7 @@ import { runDailyAutopilotForProject } from "@/lib/dailyAutopilotRunner";
 import { buildGrowthActions, buildResearchRun, buildViralCampaignItems } from "@/lib/growthEngine";
 import { applySafeFixes, detectGrowthProblems } from "@/lib/growthProblemSolver";
 import { markPostPublished, scheduleApprovedAssets } from "@/lib/publishingScheduler";
+import { publishDuePosts } from "@/lib/publishingWorker";
 import { createClient } from "@/lib/supabase/server";
 import { runFullSystemTest } from "@/lib/systemTestRunner";
 import type {
@@ -1610,6 +1611,7 @@ export async function startDistributionEngine(formData: FormData) {
   try {
     await runDistributionCycle(projectId);
     await scheduleApprovedAssets(projectId);
+    await publishDuePosts(10, { projectId, ownerId: user.id });
   } catch (error) {
     redirectWithError(
       pathname,

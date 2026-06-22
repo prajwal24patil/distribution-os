@@ -10,6 +10,7 @@ import { CopyButton } from "@/components/ui/CopyButton";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { loadAutopilotPageData } from "@/lib/autopilotData";
 import { requireUser } from "@/lib/auth";
+import { sanitizeCareerScoreCopy, sanitizeCareerScoreTitle } from "@/lib/careerScoreCopy";
 import { getPublicAppUrl, toPublicUrl } from "@/lib/publicUrl";
 import { isBlogPlatform } from "@/lib/blogPublisher";
 import type { DashboardQcResult } from "@/lib/dashboardQcAgent";
@@ -25,8 +26,6 @@ type AutopilotPageProps = {
   }>;
 };
 
-const CAREERSCORE_PROBLEM =
-  "Job seekers apply repeatedly but don’t know why they are not getting shortlisted.";
 const NO_REAL_WINNER =
   "No real winner yet. Connect CareerScore events or add a real result after posting.";
 
@@ -127,20 +126,14 @@ function SystemHealthCard({
   );
 }
 
-const oldProblemPattern = new RegExp(
-  [
-    "People do not know their",
-    "market value",
-    "skill gaps",
-    "best career path",
-    "or what to do next\\.?",
-  ].join(", "),
-  "gi",
-);
 const trackingPlaceholderPattern = /(\{tracking_link\}|\[tracking link\])/gi;
 
 function cleanCareerScoreText(value: string) {
-  return value.replace(oldProblemPattern, CAREERSCORE_PROBLEM).replace(/\bna\b/gi, NO_REAL_WINNER);
+  return sanitizeCareerScoreCopy(value).replace(/\bna\b/gi, NO_REAL_WINNER);
+}
+
+function cleanScheduledTitle(post: ScheduledPostRow) {
+  return sanitizeCareerScoreTitle(post.title, `${post.platform} ${post.content_type}`);
 }
 
 function contentWithTrackingLink(content: string, trackingUrl: string) {
@@ -180,7 +173,7 @@ function uniqueScheduledPosts(posts: ScheduledPostRow[], readyItems: PublisherQu
   const unique = sorted.filter((post) => {
     const key = [
       post.platform.toLowerCase(),
-      cleanCareerScoreText(post.title).toLowerCase(),
+      cleanScheduledTitle(post).toLowerCase(),
       cleanCareerScoreText(post.content).toLowerCase(),
     ].join("|");
 
@@ -239,9 +232,7 @@ function ScheduledPostCard({ post, origin }: { post: ScheduledPostRow; origin: s
                   : post.status}
             </span>
           </div>
-          <h4 className="mt-3 font-semibold text-neutral-950">
-            {cleanCareerScoreText(post.title)}
-          </h4>
+          <h4 className="mt-3 font-semibold text-neutral-950">{cleanScheduledTitle(post)}</h4>
           <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
             Scheduled
           </p>

@@ -62,6 +62,13 @@ export async function publishSinglePost(post: ScheduledPostRow) {
     return { status: "published", reason: "", publishedUrl };
   }
 
+  if (post.status === "manual_required") {
+    return {
+      status: "manual_required",
+      reason: "Official account connection required before auto-publishing.",
+    };
+  }
+
   const connection = await getConnection(post);
   const connected = connection?.connection_status === "connected";
 
@@ -107,15 +114,27 @@ export async function publishSinglePost(post: ScheduledPostRow) {
   return { status: "published", reason: "" };
 }
 
-export async function publishDuePosts(limit = 10) {
+export async function publishDuePosts(
+  limit = 10,
+  filters: { projectId?: string; ownerId?: string } = {},
+) {
   const supabase = createAdminClient();
-  const { data, error } = await supabase
+  let query = supabase
     .from("scheduled_posts")
     .select("*")
     .lte("scheduled_for", new Date().toISOString())
-    .in("status", ["scheduled", "ready"])
-    .order("scheduled_for", { ascending: true })
-    .limit(limit);
+    .in("status", ["scheduled", "ready", "manual_required", "auto_publish_ready"])
+    .order("scheduled_for", { ascending: true });
+
+  if (filters.projectId) {
+    query = query.eq("project_id", filters.projectId);
+  }
+
+  if (filters.ownerId) {
+    query = query.eq("owner_id", filters.ownerId);
+  }
+
+  const { data, error } = await query.limit(limit);
 
   if (error) {
     throw new Error(error.message);

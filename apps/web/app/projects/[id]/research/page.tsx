@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { runResearch } from "@/app/actions";
 import { SubmitButton } from "@/components/ui/SubmitButton";
+import { sanitizeCareerScoreCopy } from "@/lib/careerScoreCopy";
 import { formatDate } from "@/lib/projects";
 import { requireUser } from "@/lib/auth";
 
@@ -24,7 +25,9 @@ function InsightCard({ title, body }: InsightCardProps) {
   return (
     <div className="rounded border border-neutral-300 bg-white p-5">
       <h3 className="text-lg font-semibold text-neutral-950">{title}</h3>
-      <p className="mt-3 whitespace-pre-line text-sm leading-6 text-neutral-700">{body}</p>
+      <p className="mt-3 whitespace-pre-line text-sm leading-6 text-neutral-700">
+        {sanitizeCareerScoreCopy(body)}
+      </p>
     </div>
   );
 }

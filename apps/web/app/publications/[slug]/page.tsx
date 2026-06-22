@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { headers } from "next/headers";
 import { extractPostIdFromPublicationSlug } from "@/lib/blogPublisher";
+import { sanitizeCareerScoreCopy, sanitizeCareerScoreTitle } from "@/lib/careerScoreCopy";
 import { getPublicAppUrl, toPublicUrl } from "@/lib/publicUrl";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { ScheduledPostRow } from "@/lib/supabase/types";
@@ -22,8 +23,8 @@ export async function generateMetadata({ params }: PublicationPageProps) {
   }
 
   return {
-    title: post.title,
-    description: post.content.slice(0, 150),
+    title: sanitizeCareerScoreTitle(post.title, `${post.platform} ${post.content_type}`),
+    description: sanitizeCareerScoreCopy(post.content).slice(0, 150),
   };
 }
 
@@ -58,8 +59,12 @@ export default async function PublicationPage({ params }: PublicationPageProps) 
 
   const trackingUrl = toPublicUrl(post.tracking_url, origin);
   const articleContent = post.tracking_url
-    ? post.content.replaceAll(post.tracking_url, trackingUrl)
-    : post.content;
+    ? sanitizeCareerScoreCopy(post.content).replaceAll(post.tracking_url, trackingUrl)
+    : sanitizeCareerScoreCopy(post.content);
+  const articleTitle = sanitizeCareerScoreTitle(
+    post.title,
+    `${post.platform} ${post.content_type}`,
+  );
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-12 text-neutral-950 sm:px-6">
@@ -67,7 +72,7 @@ export default async function PublicationPage({ params }: PublicationPageProps) 
         <p className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
           CareerScore Publication
         </p>
-        <h1 className="mt-3 text-4xl font-semibold leading-tight">{post.title}</h1>
+        <h1 className="mt-3 text-4xl font-semibold leading-tight">{articleTitle}</h1>
         <p className="mt-3 text-sm text-neutral-500">Published by DistributionOS for CareerScore</p>
         <div className="mt-8 whitespace-pre-wrap text-base leading-8 text-neutral-800">
           {articleContent}

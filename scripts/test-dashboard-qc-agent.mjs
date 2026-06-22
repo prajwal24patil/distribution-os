@@ -46,6 +46,7 @@ includesAll(
 );
 
 const qcAgent = read("apps/web/lib/dashboardQcAgent.ts");
+const copy = read("apps/web/lib/careerScoreCopy.ts");
 ok(qcAgent.includes("system_test"), "system_test assets are filtered from real view");
 ok(qcAgent.includes("dedupeAssets"), "duplicate assets are deduped");
 ok(
@@ -55,10 +56,11 @@ ok(
 ok(qcAgent.includes("\\[tracking link\\]"), "[tracking link] is replaced");
 ok(qcAgent.includes("templateFor"), "meta descriptions become actual posts");
 ok(
-  qcAgent.includes(
-    "Job seekers apply repeatedly but don’t know why they are not getting shortlisted.",
-  ),
-  "banned robotic phrase is replaced",
+  qcAgent.includes("sanitizeCareerScoreCopy") &&
+    copy.includes(
+      "Job seekers apply repeatedly but don't know why they are not getting shortlisted.",
+    ),
+  "banned robotic phrase is replaced by shared sanitizer",
 );
 ok(qcAgent.includes('status: "pass"') || qcAgent.includes("status:"), "QC result format is valid");
 

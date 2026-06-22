@@ -4,6 +4,7 @@ import {
   generateQcSummary,
   type DashboardQcResult,
 } from "@/lib/dashboardQcAgent";
+import { sanitizeCareerScoreCopy } from "@/lib/careerScoreCopy";
 import { createClient } from "@/lib/supabase/server";
 import type {
   CampaignItemRow,
@@ -77,6 +78,12 @@ type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 
 const NO_REAL_WINNER =
   "No real winner yet. Connect CareerScore events or add a real result after posting.";
+const PENDING_SCHEDULED_STATUSES = new Set([
+  "scheduled",
+  "ready",
+  "manual_required",
+  "auto_publish_ready",
+]);
 
 function itemScore(item: AutopilotCampaignItem) {
   const results = (item.campaign_results ?? []).reduce(
@@ -101,7 +108,9 @@ function buildNextBestAction({
   const failedItem = campaignItems.find((item) => item.status === "failed");
 
   if (readyItems.length > 0) {
-    return `Post one ${readyItems[0].platform} item manually, then add the result.`;
+    return sanitizeCareerScoreCopy(
+      `Post one ${readyItems[0].platform} item manually, then add the result.`,
+    );
   }
 
   if (pendingResult) {
@@ -113,7 +122,9 @@ function buildNextBestAction({
   }
 
   if (failedItem) {
-    return `Rewrite the ${failedItem.channel} angle and try a clearer hook.`;
+    return sanitizeCareerScoreCopy(
+      `Rewrite the ${failedItem.channel} angle and try a clearer hook.`,
+    );
   }
 
   return "Run Autopilot to create the next ready-to-post item.";
@@ -187,8 +198,9 @@ function summarizeResults({
     freeScores: scopedEvents.filter((event) => event.event_type === "free_score_generated").length,
     referralShares: scopedEvents.filter((event) => event.event_type === "referral_share").length,
     eventsReceived: scopedEvents.length,
-    latestLearning:
+    latestLearning: sanitizeCareerScoreCopy(
       [...scopedResults].reverse().find((result) => result.learning)?.learning || NO_REAL_WINNER,
+    ),
   });
   const realTotals = summarizeTotals({
     scopedResults: realResults,
@@ -210,15 +222,23 @@ function summarizeResults({
     freeScores: realTotals.freeScores,
     referralShares: realTotals.referralShares,
     bestChannel,
-    bestHook: bestRealItem && itemScore(bestRealItem) > 0 ? bestRealItem.hook : NO_REAL_WINNER,
-    bestCta: bestRealItem && itemScore(bestRealItem) > 0 ? bestRealItem.cta : NO_REAL_WINNER,
+    bestHook:
+      bestRealItem && itemScore(bestRealItem) > 0
+        ? sanitizeCareerScoreCopy(bestRealItem.hook)
+        : NO_REAL_WINNER,
+    bestCta:
+      bestRealItem && itemScore(bestRealItem) > 0
+        ? sanitizeCareerScoreCopy(bestRealItem.cta)
+        : NO_REAL_WINNER,
     bestAudience:
-      bestRealItem && itemScore(bestRealItem) > 0 ? bestRealItem.target_audience : NO_REAL_WINNER,
+      bestRealItem && itemScore(bestRealItem) > 0
+        ? sanitizeCareerScoreCopy(bestRealItem.target_audience)
+        : NO_REAL_WINNER,
     bestAssetType:
       bestRealItem && itemScore(bestRealItem) > 0
         ? bestRealItem.campaign_type.replace(/_/g, " ")
         : NO_REAL_WINNER,
-    latestLearning: latestRealLearning || NO_REAL_WINNER,
+    latestLearning: sanitizeCareerScoreCopy(latestRealLearning || NO_REAL_WINNER),
     nextBestAction: buildNextBestAction({ readyItems, campaignItems, bestChannel }),
     includesDemoData,
     eventsReceived: realTotals.eventsReceived,
@@ -229,6 +249,10 @@ function summarizeResults({
     lastCronRun: distributionCycle?.created_at || "",
     demo: demoTotals,
   };
+}
+
+function isPendingScheduledPost(post: ScheduledPostRow) {
+  return PENDING_SCHEDULED_STATUSES.has(post.status);
 }
 
 export async function loadAutopilotPageData({
@@ -364,7 +388,8 @@ export async function loadAutopilotPageData({
   const rawReadyItems = (readyItemsResult.data ?? []) as PublisherQueueRow[];
   const rawScheduledPosts = (scheduledPostsResult.data ?? []) as ScheduledPostRow[];
   const readyItems = cleanVisibleBestAssets(rawReadyItems);
-  const scheduledPosts = cleanVisibleScheduledWork(rawScheduledPosts);
+  const scheduledPosts =
+    cleanVisibleScheduledWork(rawScheduledPosts).filter(isPendingScheduledPost);
   const publishingConnections = (connectionsResult.data ?? []) as PublishingConnectionRow[];
   const conversionEvents = (conversionEventsResult.data ?? []) as ConversionEventRow[];
   const latestSystemTest = (systemTestResult.data ?? null) as SystemTestRunRow | null;
@@ -409,7 +434,7 @@ export async function loadAutopilotPageData({
       results,
       links,
       conversionEvents,
-      scheduledPosts,
+      scheduledPosts: rawScheduledPosts,
       distributionCycle: (cycleResult.data ?? null) as DistributionCycleRow | null,
     }),
     error:

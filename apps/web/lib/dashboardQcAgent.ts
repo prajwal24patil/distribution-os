@@ -1,3 +1,8 @@
+import {
+  hasBannedCareerScorePhrase,
+  sanitizeCareerScoreCopy,
+  sanitizeCareerScoreTitle,
+} from "@/lib/careerScoreCopy";
 import { createClient } from "@/lib/supabase/server";
 import type { PublisherQueueRow, ScheduledPostRow } from "@/lib/supabase/types";
 
@@ -22,18 +27,6 @@ type VisibleAsset = {
   predicted_rank_score?: number;
 };
 
-const ROBOTIC_PATTERN = new RegExp(
-  [
-    "People do not know their",
-    "market value",
-    "skill gaps",
-    "best career path",
-    "or what to do next\\.?",
-  ].join(", "),
-  "gi",
-);
-const CAREERSCORE_PROBLEM =
-  "Job seekers apply repeatedly but don’t know why they are not getting shortlisted.";
 const TRACKING_TOKEN_PATTERN = /(\{tracking_link\}|\[tracking link\])/gi;
 const URL_PATTERN = /https?:\/\/\S+|\/t\/[a-zA-Z0-9-]+/;
 const META_DESCRIPTION_PATTERN =
@@ -116,17 +109,15 @@ function templateFor(asset: VisibleAsset) {
 export function replaceTrackingPlaceholders<T extends VisibleAsset>(input: T): T {
   const trackingUrl = input.tracking_url || "";
   const content = input.content || "";
-  const cleaned = content
-    .replace(ROBOTIC_PATTERN, CAREERSCORE_PROBLEM)
-    .replace(
-      TRACKING_TOKEN_PATTERN,
-      trackingUrl || "Add CareerScore URL to create tracking links.",
-    );
+  const cleaned = sanitizeCareerScoreCopy(content).replace(
+    TRACKING_TOKEN_PATTERN,
+    trackingUrl || "Add CareerScore URL to create tracking links.",
+  );
   const shouldAppend = trackingUrl && !URL_PATTERN.test(cleaned);
 
   return {
     ...input,
-    title: input.title.replace(ROBOTIC_PATTERN, CAREERSCORE_PROBLEM),
+    title: sanitizeCareerScoreTitle(input.title, `${input.platform} ${input.asset_type ?? ""}`),
     content: shouldAppend ? `${cleaned}\n\n${trackingUrl}` : cleaned,
   };
 }
@@ -225,7 +216,7 @@ export function validateReadyToPostContent(input: VisibleAsset[]) {
     if (item.tracking_url && !item.content.includes(item.tracking_url)) {
       warnings.push(`${item.title} is missing the tracking URL in copy.`);
     }
-    if (ROBOTIC_PATTERN.test(item.content) || ROBOTIC_PATTERN.test(item.title)) {
+    if (hasBannedCareerScorePhrase(item.content) || hasBannedCareerScorePhrase(item.title)) {
       warnings.push(`${item.title} has robotic CareerScore wording.`);
     }
     if (META_DESCRIPTION_PATTERN.test(item.content)) {

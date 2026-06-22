@@ -5,6 +5,7 @@ import { generateViralCampaign, saveCampaignResult, updateCampaignItemStatus } f
 import { CopyButton } from "@/components/ui/CopyButton";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { requireUser } from "@/lib/auth";
+import { sanitizeCareerScoreCopy } from "@/lib/careerScoreCopy";
 import { formatDate } from "@/lib/projects";
 import { getPublicAppUrl, toPublicUrl } from "@/lib/publicUrl";
 import type {
@@ -89,12 +90,14 @@ function getWinnerSummary(campaigns: CampaignWithItems[]): WinnerSummary {
 
   return {
     bestChannel: bestItem.channel,
-    bestHook: bestItem.hook,
-    bestCta: bestItem.cta,
+    bestHook: sanitizeCareerScoreCopy(bestItem.hook),
+    bestCta: sanitizeCareerScoreCopy(bestItem.cta),
     bestCampaign,
     bestSource: bestItem.tracking_links?.[0]?.utm_source || bestItem.channel,
-    bestCampaignItem: bestItem.hook,
-    bestContentAngle: bestItem.tracking_links?.[0]?.utm_content || bestItem.hook,
+    bestCampaignItem: sanitizeCareerScoreCopy(bestItem.hook),
+    bestContentAngle: sanitizeCareerScoreCopy(
+      bestItem.tracking_links?.[0]?.utm_content || bestItem.hook,
+    ),
     nextViralMove: weakHook
       ? `Rewrite weak hooks, then create more ${bestItem.channel} items using the winning format.`
       : `Repeat winners by creating more ${bestItem.channel} campaigns with the same CTA pattern.`,
@@ -196,7 +199,7 @@ function ResultList({ results }: { results: CampaignResultRow[] }) {
               Views {result.views} / Clicks {result.clicks} / Signups {result.signups} / Paid{" "}
               {result.paid_users} / Revenue {Number(result.revenue).toFixed(2)}
             </p>
-            {result.learning ? <p>Learning: {result.learning}</p> : null}
+            {result.learning ? <p>Learning: {sanitizeCareerScoreCopy(result.learning)}</p> : null}
           </div>
         ))}
       </div>
@@ -208,12 +211,15 @@ function CampaignItemCard({ item, origin }: { item: CampaignItemWithResults; ori
   const results = item.campaign_results ?? [];
   const trackingLink = item.tracking_links?.[0] ?? null;
   const trackingUrl = trackingLink ? toPublicUrl(trackingLink.tracking_url, origin) : "";
+  const hook = sanitizeCareerScoreCopy(item.hook);
+  const content = sanitizeCareerScoreCopy(item.content);
+  const cta = sanitizeCareerScoreCopy(item.cta);
   const copyValue = [
-    item.hook,
+    hook,
     "",
-    item.content,
+    content,
     "",
-    `CTA: ${item.cta}`,
+    `CTA: ${cta}`,
     trackingUrl ? `Tracking link: ${trackingUrl}` : "",
   ]
     .filter(Boolean)
@@ -226,8 +232,8 @@ function CampaignItemCard({ item, origin }: { item: CampaignItemWithResults; ori
           <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
             {item.channel} / {displayStatus(item.status)}
           </p>
-          <h4 className="mt-1 font-semibold text-neutral-950">{item.hook}</h4>
-          <p className="mt-2 text-sm leading-6 text-neutral-700">{item.content}</p>
+          <h4 className="mt-1 font-semibold text-neutral-950">{hook}</h4>
+          <p className="mt-2 text-sm leading-6 text-neutral-700">{content}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <CopyButton value={copyValue} />
@@ -256,14 +262,14 @@ function CampaignItemCard({ item, origin }: { item: CampaignItemWithResults; ori
       <div className="mt-4 grid gap-3 text-sm leading-6 text-neutral-700 md:grid-cols-2">
         <p>
           <span className="font-semibold text-neutral-950">Target audience:</span>{" "}
-          {item.target_audience}
+          {sanitizeCareerScoreCopy(item.target_audience)}
         </p>
         <p>
-          <span className="font-semibold text-neutral-950">CTA:</span> {item.cta}
+          <span className="font-semibold text-neutral-950">CTA:</span> {cta}
         </p>
         <p>
           <span className="font-semibold text-neutral-950">Expected outcome:</span>{" "}
-          {item.expected_outcome}
+          {sanitizeCareerScoreCopy(item.expected_outcome)}
         </p>
         <p>
           <span className="font-semibold text-neutral-950">Tracking link:</span>{" "}
@@ -451,19 +457,19 @@ export default async function CampaignsPage({ params, searchParams }: CampaignsP
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <p className="text-sm leading-6 text-neutral-700">
             <span className="font-semibold text-neutral-950">Best channel:</span>{" "}
-            {winnerSummary.bestChannel}
+            {sanitizeCareerScoreCopy(winnerSummary.bestChannel)}
           </p>
           <p className="text-sm leading-6 text-neutral-700">
             <span className="font-semibold text-neutral-950">Best hook:</span>{" "}
-            {winnerSummary.bestHook}
+            {sanitizeCareerScoreCopy(winnerSummary.bestHook)}
           </p>
           <p className="text-sm leading-6 text-neutral-700">
             <span className="font-semibold text-neutral-950">Best CTA:</span>{" "}
-            {winnerSummary.bestCta}
+            {sanitizeCareerScoreCopy(winnerSummary.bestCta)}
           </p>
           <p className="text-sm leading-6 text-neutral-700">
             <span className="font-semibold text-neutral-950">Best campaign:</span>{" "}
-            {winnerSummary.bestCampaign}
+            {sanitizeCareerScoreCopy(winnerSummary.bestCampaign)}
           </p>
           <p className="text-sm leading-6 text-neutral-700">
             <span className="font-semibold text-neutral-950">Best source:</span>{" "}
@@ -471,16 +477,18 @@ export default async function CampaignsPage({ params, searchParams }: CampaignsP
           </p>
           <p className="text-sm leading-6 text-neutral-700">
             <span className="font-semibold text-neutral-950">Best ready-to-use work:</span>{" "}
-            {winnerSummary.bestCampaignItem}
+            {sanitizeCareerScoreCopy(winnerSummary.bestCampaignItem)}
           </p>
           <p className="text-sm leading-6 text-neutral-700">
             <span className="font-semibold text-neutral-950">Best content angle:</span>{" "}
-            {winnerSummary.bestContentAngle}
+            {sanitizeCareerScoreCopy(winnerSummary.bestContentAngle)}
           </p>
         </div>
         <div className="mt-4 border-t border-neutral-200 pt-4">
           <p className="text-sm font-semibold text-neutral-950">Next action</p>
-          <p className="mt-2 text-sm leading-6 text-neutral-700">{winnerSummary.nextViralMove}</p>
+          <p className="mt-2 text-sm leading-6 text-neutral-700">
+            {sanitizeCareerScoreCopy(winnerSummary.nextViralMove)}
+          </p>
         </div>
       </section>
 
@@ -500,7 +508,9 @@ export default async function CampaignsPage({ params, searchParams }: CampaignsP
                   {displayStatus(campaign.status)}
                 </p>
                 <h3 className="mt-1 text-lg font-semibold text-neutral-950">{campaign.name}</h3>
-                <p className="mt-2 text-sm leading-6 text-neutral-700">{campaign.next_action}</p>
+                <p className="mt-2 text-sm leading-6 text-neutral-700">
+                  {sanitizeCareerScoreCopy(campaign.next_action)}
+                </p>
               </div>
               <div className="divide-y divide-neutral-200">
                 {(campaign.campaign_items ?? []).map((item) => (

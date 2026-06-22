@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { generateGrowthActions, updateGrowthActionStatus } from "@/app/actions";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { requireUser } from "@/lib/auth";
+import { sanitizeCareerScoreCopy } from "@/lib/careerScoreCopy";
 import type { GrowthActionCategory, GrowthActionRow } from "@/lib/supabase/types";
 
 type ActionsPageProps = {
@@ -188,7 +189,9 @@ export default async function ActionsPage({ params, searchParams }: ActionsPageP
                       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                         <div>
                           <div className="flex flex-wrap items-center gap-2">
-                            <h4 className="font-semibold text-neutral-950">{action.title}</h4>
+                            <h4 className="font-semibold text-neutral-950">
+                              {sanitizeCareerScoreCopy(action.title)}
+                            </h4>
                             <span
                               className={`inline-flex h-7 items-center rounded border px-2.5 text-xs font-medium ${actionStatusStyle(
                                 action.status,
@@ -198,7 +201,7 @@ export default async function ActionsPage({ params, searchParams }: ActionsPageP
                             </span>
                           </div>
                           <p className="mt-2 text-sm leading-6 text-neutral-700">
-                            {action.description}
+                            {sanitizeCareerScoreCopy(action.description)}
                           </p>
                         </div>
                         <div className="flex flex-wrap gap-2">

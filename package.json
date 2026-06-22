@@ -14,6 +14,7 @@
     "typecheck": "npm run typecheck --workspace apps/web",
     "test:autopilot": "node scripts/test-autopilot-flow.mjs",
     "test:autonomous-distribution": "node scripts/test-autonomous-distribution.mjs",
+    "test:blog-auto-publish": "node scripts/test-blog-auto-publish.mjs",
     "test:blog-publisher": "node scripts/test-blog-publisher.mjs",
     "test:careerscore-webhook": "node scripts/test-careerscore-webhook.mjs",
     "test:cron-distribution": "node scripts/test-cron-distribution.mjs",

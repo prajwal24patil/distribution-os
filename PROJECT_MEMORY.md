@@ -128,6 +128,89 @@ Last local Autopilot QA verification:
 - `npm run build`
 - `npm run test:autopilot`
 
+## Current MVP State - Final Autopilot Production Cleanup
+
+Status: verified on local checks.
+
+Completed the focused final Autopilot production cleanup without changing auth, UI structure, database schema, tracking redirects, webhook behavior, cron protection, dashboard QC, or system health.
+
+### Visible Copy Cleanup
+
+Added shared CareerScore copy sanitization so stale stored/generated output is cleaned before it reaches the founder-facing UI.
+
+Completed:
+
+- old CareerScore problem phrase removed from visible output
+- dashboard-ready data uses the shared sanitizer
+- scheduled work titles/content use the shared sanitizer
+- research summaries, actions, approvals, campaign cards, public publications, and generated fallbacks sanitize stale copy before rendering
+- old blog title fallback now displays as: `Before applying to 100 jobs, check your CareerScore.`
+
+### Blog Auto-Publishing
+
+Due blog/SEO scheduled posts now publish internally when Autopilot or cron runs.
+
+Behavior:
+
+- due blog rows with `scheduled`, `ready`, `manual_required`, or `auto_publish_ready` status are eligible for internal publishing
+- internal blog publishing creates a `/publications/[slug]` URL
+- `published_url` is saved on the scheduled post and linked publisher queue item
+- scheduled post status is marked `published`
+- Blog published count reads from raw scheduled rows, so published blog posts increment the count
+- published blog posts no longer appear as pending Scheduled Work
+- social platforms remain `manual_required` until official accounts are connected
+
+### Public Publication Page
+
+Confirmed the publication route remains available:
+
+- `/publications/[slug]`
+
+The public page renders:
+
+- sanitized title
+- sanitized post/body content
+- CareerScore tracking link
+- readable article layout
+
+### Regression Coverage
+
+Added:
+
+- `scripts/test-blog-auto-publish.mjs`
+- `npm run test:blog-auto-publish`
+
+The new QA check verifies:
+
+- old banned phrase is not saved by the blog publisher
+- due blog publishing path exists
+- `published_url` is created
+- published blog posts are excluded from pending scheduled work
+- Blog published count increments from published rows
+- social platforms remain manual-required
+
+### Migration Required
+
+No new migration required.
+
+Note: local Supabase type definitions now include `auto_publish_ready` as a recognized scheduled-post status for compatibility with existing production-ready status handling.
+
+### Checks Verified
+
+Passed:
+
+- `npm run format`
+- `npm run lint`
+- `npm run typecheck`
+- `npm run build`
+- `npm run test:blog-auto-publish`
+- `npm run test:dashboard-qc`
+- `npm run test:system-runner`
+- `npm run test:publishing-system`
+- `npm run test:autonomous-distribution`
+- `npm run test:autopilot`
+- `backend/.venv/Scripts/python.exe -m pytest` from `backend/`
+
 ## Daily Autopilot Ready-To-Post Usability Notes
 
 Improved the Autopilot ready-to-post cards so a founder can immediately understand what to post, where to post it, and how to record the result.

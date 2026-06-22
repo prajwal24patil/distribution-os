@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { markActionManuallyExecuted, updateGrowthActionStatus } from "@/app/actions";
 import { SubmitButton } from "@/components/ui/SubmitButton";
+import { sanitizeCareerScoreCopy } from "@/lib/careerScoreCopy";
 import { formatDate } from "@/lib/projects";
 import { requireUser } from "@/lib/auth";
 import type { ExecutionLogRow, GrowthActionRow, GrowthActionStatus } from "@/lib/supabase/types";
@@ -220,8 +221,8 @@ function ExecutionLogs({ logs }: { logs: ExecutionLogRow[] }) {
             {log.result_metric || log.result_value ? (
               <p>Result: {[log.result_metric, log.result_value].filter(Boolean).join(" - ")}</p>
             ) : null}
-            {log.notes ? <p>{log.notes}</p> : null}
-            {log.learning ? <p>Learning: {log.learning}</p> : null}
+            {log.notes ? <p>{sanitizeCareerScoreCopy(log.notes)}</p> : null}
+            {log.learning ? <p>Learning: {sanitizeCareerScoreCopy(log.learning)}</p> : null}
             {log.completed_at ? <p>Completed: {formatDate(log.completed_at)}</p> : null}
           </div>
         ))}
@@ -240,8 +241,12 @@ function ActionCard({ action, projectId }: { action: ActionWithLogs; projectId: 
           <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
             {action.category}
           </p>
-          <h4 className="mt-1 font-semibold text-neutral-950">{action.title}</h4>
-          <p className="mt-2 text-sm leading-6 text-neutral-700">{action.description}</p>
+          <h4 className="mt-1 font-semibold text-neutral-950">
+            {sanitizeCareerScoreCopy(action.title)}
+          </h4>
+          <p className="mt-2 text-sm leading-6 text-neutral-700">
+            {sanitizeCareerScoreCopy(action.description)}
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           {action.status === "pending" ? (

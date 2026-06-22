@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { sanitizeCareerScoreCopy, sanitizeCareerScoreTitle } from "@/lib/careerScoreCopy";
 import { toPublicUrl } from "@/lib/publicUrl";
 import type { ScheduledPostRow } from "@/lib/supabase/types";
 
@@ -16,7 +17,9 @@ export function isBlogPlatform(platform: string, contentType = "") {
 }
 
 export function publicationSlug(post: ScheduledPostRow) {
-  const titleSlug = slugify(post.title) || "careerscore-growth-note";
+  const titleSlug =
+    slugify(sanitizeCareerScoreTitle(post.title, `${post.platform} ${post.content_type}`)) ||
+    "careerscore-growth-note";
   return `${titleSlug}-${post.id}`;
 }
 
@@ -33,10 +36,14 @@ export function extractPostIdFromPublicationSlug(slug: string) {
 export async function publishInternalBlogPost(post: ScheduledPostRow) {
   const supabase = createAdminClient();
   const publishedUrl = publicationUrl(post);
+  const cleanTitle = sanitizeCareerScoreTitle(post.title, `${post.platform} ${post.content_type}`);
+  const cleanContent = sanitizeCareerScoreCopy(post.content);
 
   const { error: postError } = await supabase
     .from("scheduled_posts")
     .update({
+      title: cleanTitle,
+      content: cleanContent,
       status: "published",
       publish_attempts: post.publish_attempts + 1,
       published_url: publishedUrl,
@@ -52,6 +59,8 @@ export async function publishInternalBlogPost(post: ScheduledPostRow) {
   const { error: queueError } = await supabase
     .from("publisher_queue")
     .update({
+      title: cleanTitle,
+      content: cleanContent,
       publishing_status: "published",
       published_url: publishedUrl,
       posted_url: publishedUrl,
