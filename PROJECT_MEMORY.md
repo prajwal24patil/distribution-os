@@ -128,6 +128,91 @@ Last local Autopilot QA verification:
 - `npm run build`
 - `npm run test:autopilot`
 
+## Current MVP State - Production Cron JSON Hardening
+
+Status: verified on local checks.
+
+Fixed the production cron route hardening for:
+
+- `POST /api/cron/distribution`
+
+Root cause found:
+
+- the cron route could still produce an unstructured Vercel 500 when server-only environment variables were missing before `createAdminClient()` returned a client
+- the final due-publishing step ran outside the project-level isolation and could throw after all project work had completed
+- some Supabase failures were returned as raw messages instead of structured `{ table, action, message }` JSON
+
+### Cron Route Behavior
+
+The cron route now:
+
+- keeps `Authorization: Bearer ${CRON_SECRET}` required
+- supports explicit `GET` method handling with JSON `405`
+- validates required env vars before creating the Supabase admin client:
+  - `NEXT_PUBLIC_SUPABASE_URL`
+  - `SUPABASE_SERVICE_ROLE_KEY`
+  - `CRON_SECRET`
+  - `NEXT_PUBLIC_APP_URL`
+- returns JSON `500` with missing env variable names only when env is incomplete
+- returns JSON for Supabase query failures with:
+  - `table`
+  - `action`
+  - `message`
+- isolates each project with per-project `try/catch`
+- isolates the final `publishDuePosts` step
+- logs only safe error metadata:
+  - scope
+  - project id
+  - table
+  - action
+  - message
+- avoids exposing secret values in responses or logs
+- returns a stable JSON summary containing:
+  - `ok`
+  - `projects_checked`
+  - `cycles_run`
+  - `assets_created`
+  - `scheduled`
+  - `published`
+  - `manual_required`
+  - `errors`
+
+### Regression Coverage
+
+Added:
+
+- `scripts/test-cron-production-route.mjs`
+- `npm run test:cron-production-route`
+
+The new QA check verifies:
+
+- `POST` is supported
+- `GET` has explicit method handling
+- missing auth returns JSON `401`
+- valid route path returns the expected JSON summary shape
+- missing env and route failures return JSON
+- Supabase failures include table/action metadata
+- per-project and publishing failures are collected instead of escaping as unhandled exceptions
+
+### Migration Required
+
+No migration required.
+
+### Checks Verified
+
+Passed:
+
+- `npm run format`
+- `npm run lint`
+- `npm run typecheck`
+- `npm run build`
+- `npm run test:cron-production-route`
+- `npm run test:blog-auto-publish`
+- `npm run test:dashboard-qc`
+- `npm run test:system-runner`
+- `npm run test:autopilot`
+- `backend/.venv/Scripts/python.exe -m pytest` from `backend/`
+
 ## Current MVP State - Final Autopilot Production Cleanup
 
 Status: verified on local checks.

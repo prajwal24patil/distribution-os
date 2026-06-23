@@ -17,8 +17,76 @@ import type {
   ScheduledPostRow,
 } from "@/lib/supabase/types";
 
+type CronErrorDetail = {
+  project_id?: string;
+  table?: string;
+  action?: string;
+  message: string;
+};
+
+class CronRouteError extends Error {
+  table?: string;
+  action?: string;
+
+  constructor({ table, action, message }: { table?: string; action?: string; message: string }) {
+    super(message);
+    this.name = "CronRouteError";
+    this.table = table;
+    this.action = action;
+  }
+}
+
 function unauthorized() {
   return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+}
+
+function methodNotAllowed() {
+  return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
+}
+
+export function GET() {
+  return methodNotAllowed();
+}
+
+function validateRequiredEnv() {
+  const required = [
+    "NEXT_PUBLIC_SUPABASE_URL",
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "CRON_SECRET",
+    "NEXT_PUBLIC_APP_URL",
+  ];
+
+  return required.filter((key) => !process.env[key]?.trim());
+}
+
+function supabaseFailure(table: string, action: string, message: string) {
+  return new CronRouteError({ table, action, message });
+}
+
+function safeErrorDetail(error: unknown, projectId?: string): CronErrorDetail {
+  if (error instanceof CronRouteError) {
+    return {
+      project_id: projectId,
+      table: error.table,
+      action: error.action,
+      message: error.message,
+    };
+  }
+
+  return {
+    project_id: projectId,
+    message: error instanceof Error ? error.message : "Cron step failed.",
+  };
+}
+
+function logSafeCronError(scope: string, error: CronErrorDetail) {
+  console.error("[cron:distribution]", {
+    scope,
+    project_id: error.project_id,
+    table: error.table,
+    action: error.action,
+    message: error.message,
+  });
 }
 
 function slug(value: string) {
@@ -44,12 +112,16 @@ function normalizePlatform(platform: string) {
 
 async function getProductUrl(project: ProjectRow) {
   const supabase = createAdminClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("product_memory")
     .select("website_url, product_url")
     .eq("project_id", project.id)
     .eq("owner_id", project.user_id)
     .maybeSingle();
+
+  if (error) {
+    throw supabaseFailure("product_memory", "select_product_url", error.message);
+  }
 
   return data?.product_url || data?.website_url || "https://incomeos-theta.vercel.app/";
 }
@@ -57,7 +129,7 @@ async function getProductUrl(project: ProjectRow) {
 async function runDistributionCycleForProject(project: ProjectRow) {
   const supabase = createAdminClient();
   const today = new Date().toISOString().slice(0, 10);
-  const { data: existingCycle } = await supabase
+  const { data: existingCycle, error: existingCycleError } = await supabase
     .from("distribution_cycles")
     .select("id, queued_count")
     .eq("project_id", project.id)
@@ -65,6 +137,14 @@ async function runDistributionCycleForProject(project: ProjectRow) {
     .gte("created_at", `${today}T00:00:00.000Z`)
     .limit(1)
     .maybeSingle();
+
+  if (existingCycleError) {
+    throw supabaseFailure(
+      "distribution_cycles",
+      "select_existing_cycle",
+      existingCycleError.message,
+    );
+  }
 
   if (existingCycle) {
     return { assetsCreated: 0, skipped: true };
@@ -86,7 +166,11 @@ async function runDistributionCycleForProject(project: ProjectRow) {
     .single();
 
   if (campaignError || !campaign) {
-    throw new Error(campaignError?.message || "Campaign could not be created.");
+    throw supabaseFailure(
+      "campaigns",
+      "insert",
+      campaignError?.message || "Campaign could not be created.",
+    );
   }
 
   const campaignItems: CampaignItemInsert[] = assets.map((asset) => ({
@@ -113,7 +197,11 @@ async function runDistributionCycleForProject(project: ProjectRow) {
     .select("id, project_id, owner_id, utm_source, utm_medium, utm_campaign, utm_content");
 
   if (itemError || !insertedItems) {
-    throw new Error(itemError?.message || "Campaign items could not be created.");
+    throw supabaseFailure(
+      "campaign_items",
+      "insert",
+      itemError?.message || "Campaign items could not be created.",
+    );
   }
 
   const trackingRows = insertedItems.map((item) => {
@@ -135,7 +223,7 @@ async function runDistributionCycleForProject(project: ProjectRow) {
   const { error: trackingError } = await supabase.from("tracking_links").insert(trackingRows);
 
   if (trackingError) {
-    throw new Error(trackingError.message);
+    throw supabaseFailure("tracking_links", "insert", trackingError.message);
   }
 
   const queueRows: PublisherQueueInsert[] = assets.map((asset, index) => ({
@@ -165,10 +253,10 @@ async function runDistributionCycleForProject(project: ProjectRow) {
   const { error: queueError } = await supabase.from("publisher_queue").insert(queueRows);
 
   if (queueError) {
-    throw new Error(queueError.message);
+    throw supabaseFailure("publisher_queue", "insert", queueError.message);
   }
 
-  await supabase.from("distribution_cycles").insert({
+  const { error: cycleInsertError } = await supabase.from("distribution_cycles").insert({
     project_id: project.id,
     owner_id: project.user_id,
     cycle_type: "daily",
@@ -184,6 +272,10 @@ async function runDistributionCycleForProject(project: ProjectRow) {
     next_cycle_plan: "Publish ready assets, collect CareerScore events, then repeat winners.",
   });
 
+  if (cycleInsertError) {
+    throw supabaseFailure("distribution_cycles", "insert", cycleInsertError.message);
+  }
+
   return { assetsCreated: queueRows.length, skipped: false };
 }
 
@@ -198,7 +290,8 @@ async function scheduleProjectAssets(project: ProjectRow) {
     .order("predicted_rank_score", { ascending: false })
     .limit(12);
 
-  if (queueError) throw new Error(queueError.message);
+  if (queueError)
+    throw supabaseFailure("publisher_queue", "select_ready_assets", queueError.message);
 
   const { data: existingData, error: existingError } = await supabase
     .from("scheduled_posts")
@@ -207,7 +300,8 @@ async function scheduleProjectAssets(project: ProjectRow) {
     .eq("owner_id", project.user_id)
     .limit(50);
 
-  if (existingError) throw new Error(existingError.message);
+  if (existingError)
+    throw supabaseFailure("scheduled_posts", "select_existing_posts", existingError.message);
 
   const existing = (existingData ?? []) as ScheduledPostRow[];
   const existingQueueIds = new Set(existing.map((post) => post.publisher_queue_id));
@@ -245,7 +339,7 @@ async function scheduleProjectAssets(project: ProjectRow) {
 
   const { error: insertError } = await supabase.from("scheduled_posts").insert(rows);
 
-  if (insertError) throw new Error(insertError.message);
+  if (insertError) throw supabaseFailure("scheduled_posts", "insert", insertError.message);
 
   return {
     scheduled: rows.filter((row) => row.status === "scheduled").length,
@@ -277,11 +371,22 @@ async function runDashboardQcForProject(project: ProjectRow) {
   ]);
 
   if (scheduledResult.error || assetsResult.error || resultsResult.error) {
-    throw new Error(
-      scheduledResult.error?.message ||
-        assetsResult.error?.message ||
-        resultsResult.error?.message ||
-        "Dashboard QC failed.",
+    if (scheduledResult.error) {
+      throw supabaseFailure(
+        "scheduled_posts",
+        "select_dashboard_qc",
+        scheduledResult.error.message,
+      );
+    }
+
+    if (assetsResult.error) {
+      throw supabaseFailure("publisher_queue", "select_dashboard_qc", assetsResult.error.message);
+    }
+
+    throw supabaseFailure(
+      "campaign_results",
+      "select_dashboard_qc",
+      resultsResult.error?.message || "Dashboard QC failed.",
     );
   }
 
@@ -301,74 +406,101 @@ async function runDashboardQcForProject(project: ProjectRow) {
 }
 
 export async function POST(request: Request) {
-  const cronSecret = process.env.CRON_SECRET;
+  try {
+    const missingEnv = validateRequiredEnv();
 
-  if (!cronSecret) {
-    return NextResponse.json({ error: "CRON_SECRET is not configured." }, { status: 500 });
-  }
-
-  const authHeader =
-    request.headers.get("Authorization") || request.headers.get("authorization") || "";
-  const token = authHeader.replace(/^Bearer\s+/i, "");
-
-  if (token !== cronSecret) {
-    return unauthorized();
-  }
-
-  const supabase = createAdminClient();
-  const { data: projects, error } = await supabase
-    .from("projects")
-    .select("*")
-    .eq("status", "active")
-    .order("updated_at", { ascending: false })
-    .limit(25);
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  const summary = {
-    projects_checked: (projects ?? []).length,
-    cycles_run: 0,
-    assets_created: 0,
-    scheduled: 0,
-    published: 0,
-    manual_required: 0,
-    errors: [] as Array<{ project_id: string; message: string }>,
-  };
-
-  for (const project of (projects ?? []) as ProjectRow[]) {
-    try {
-      const cycle = await runDistributionCycleForProject(project);
-      const qc = await runDashboardQcForProject(project);
-      const scheduled = await scheduleProjectAssets(project);
-      const metrics = await import("@/lib/publishingWorker").then((module) =>
-        module.collectPublishedPostMetrics(project.id, project.user_id),
+    if (missingEnv.length > 0) {
+      return NextResponse.json(
+        { error: "Missing required environment variables.", missing_env: missingEnv },
+        { status: 500 },
       );
-
-      summary.cycles_run += cycle.skipped ? 0 : 1;
-      summary.assets_created += cycle.assetsCreated;
-      summary.scheduled += scheduled.scheduled;
-      summary.manual_required += scheduled.manualRequired;
-
-      if (qc.status === "fail") {
-        summary.errors.push({ project_id: project.id, message: "Dashboard QC failed." });
-      }
-
-      void metrics;
-    } catch (error) {
-      summary.errors.push({
-        project_id: project.id,
-        message: error instanceof Error ? error.message : "Project cron failed.",
-      });
     }
+
+    const cronSecret = process.env.CRON_SECRET || "";
+
+    const authHeader =
+      request.headers.get("Authorization") || request.headers.get("authorization") || "";
+    const token = authHeader.replace(/^Bearer\s+/i, "");
+
+    if (token !== cronSecret) {
+      return unauthorized();
+    }
+
+    const supabase = createAdminClient();
+    const { data: projects, error } = await supabase
+      .from("projects")
+      .select("*")
+      .eq("status", "active")
+      .order("updated_at", { ascending: false })
+      .limit(25);
+
+    if (error) {
+      const detail = safeErrorDetail(supabaseFailure("projects", "select_active", error.message));
+      logSafeCronError("load_projects", detail);
+
+      return NextResponse.json({ error: "Supabase query failed.", detail }, { status: 500 });
+    }
+
+    const summary = {
+      ok: true,
+      projects_checked: (projects ?? []).length,
+      cycles_run: 0,
+      assets_created: 0,
+      scheduled: 0,
+      published: 0,
+      manual_required: 0,
+      errors: [] as CronErrorDetail[],
+    };
+
+    for (const project of (projects ?? []) as ProjectRow[]) {
+      try {
+        const cycle = await runDistributionCycleForProject(project);
+        const qc = await runDashboardQcForProject(project);
+        const scheduled = await scheduleProjectAssets(project);
+        const metrics = await import("@/lib/publishingWorker").then((module) =>
+          module.collectPublishedPostMetrics(project.id, project.user_id),
+        );
+
+        summary.cycles_run += cycle.skipped ? 0 : 1;
+        summary.assets_created += cycle.assetsCreated;
+        summary.scheduled += scheduled.scheduled;
+        summary.manual_required += scheduled.manualRequired;
+
+        if (qc.status === "fail") {
+          summary.errors.push({ project_id: project.id, message: "Dashboard QC failed." });
+        }
+
+        void metrics;
+      } catch (error) {
+        const detail = safeErrorDetail(error, project.id);
+        summary.errors.push(detail);
+        logSafeCronError("project", detail);
+      }
+    }
+
+    try {
+      const published = await publishDuePosts();
+      summary.published += published.filter((result) => result.status === "published").length;
+      summary.manual_required += published.filter(
+        (result) => result.status === "manual_required",
+      ).length;
+    } catch (error) {
+      const detail = safeErrorDetail(error);
+      summary.errors.push({
+        ...detail,
+        table: detail.table || "scheduled_posts",
+        action: detail.action || "publish_due_posts",
+      });
+      logSafeCronError("publish_due_posts", detail);
+    }
+
+    summary.ok = summary.errors.length === 0;
+
+    return NextResponse.json(summary);
+  } catch (error) {
+    const detail = safeErrorDetail(error);
+    logSafeCronError("route", detail);
+
+    return NextResponse.json({ error: "Cron route failed.", detail }, { status: 500 });
   }
-
-  const published = await publishDuePosts();
-  summary.published += published.filter((result) => result.status === "published").length;
-  summary.manual_required += published.filter(
-    (result) => result.status === "manual_required",
-  ).length;
-
-  return NextResponse.json(summary);
 }
