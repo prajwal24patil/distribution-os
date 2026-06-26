@@ -7,10 +7,15 @@ import type {
 
 export const publisherPlatforms: PublishingConnectionPlatform[] = [
   "linkedin",
+  "x",
+  "google_business_profile",
   "reddit",
-  "facebook",
-  "instagram",
+  "facebook_page",
+  "instagram_business",
   "youtube",
+  "quora_manual",
+  "whatsapp_manual",
+  "email_manual",
   "blog",
 ];
 
@@ -35,6 +40,8 @@ export function explainConnectionStatus(connection: PublishingConnectionRow | nu
     not_connected: "Needs official connection",
     connected: "Connected",
     expired: "Connection expired",
+    manual_required: "Manual required",
+    rate_limited: "Rate limited",
     permission_missing: "Permission missing",
     disabled: "Disabled",
     integration_not_ready: "Integration not ready",
@@ -46,11 +53,18 @@ export function explainConnectionStatus(connection: PublishingConnectionRow | nu
 export function getMissingConnectionSteps(platform: PublishingConnectionPlatform) {
   const steps: Record<PublishingConnectionPlatform, string> = {
     linkedin: "Create LinkedIn Developer App, request Share on LinkedIn permission, connect OAuth.",
-    reddit: "Create Reddit app, connect OAuth.",
-    facebook: "Create Meta app, connect Facebook page, request required publishing permissions.",
-    instagram:
-      "Create Meta app, connect Instagram business account, request required publishing permissions.",
+    x: "Create X Developer app, request official posting permissions, connect OAuth.",
+    google_business_profile:
+      "Create Google Cloud app, enable Business Profile APIs, connect the verified profile.",
+    reddit: "Create Reddit app, connect OAuth, and keep replies helpful/manual until approved.",
+    facebook_page:
+      "Create Meta app, connect Facebook Page, and request official publishing permissions.",
+    instagram_business:
+      "Create Meta app, connect Instagram Business account, and request publishing permissions.",
     youtube: "Create Google Cloud OAuth app, enable YouTube Data API, connect channel.",
+    quora_manual: "Prepare manual Quora answer drafts. Official auto-publishing is not enabled.",
+    whatsapp_manual: "Prepare manual WhatsApp share text. Do not auto-send messages.",
+    email_manual: "Prepare manual email drafts. Do not auto-send email.",
     blog: "Internal DistributionOS blog publishing is auto-publish ready.",
   };
 
@@ -65,7 +79,7 @@ function toView(
     connection ??
     ({
       platform,
-      connection_status: platform === "blog" ? "connected" : "not_connected",
+      connection_status: platform === "blog" ? "connected" : "manual_required",
       account_name: "",
     } as PublishingConnectionRow);
 

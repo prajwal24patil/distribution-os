@@ -13,10 +13,15 @@ function normalizePlatform(platform: string): PublishingConnectionPlatform {
   const normalized = platform.toLowerCase();
 
   if (normalized.includes("linkedin")) return "linkedin";
+  if (normalized === "x" || normalized.includes("twitter")) return "x";
+  if (normalized.includes("google")) return "google_business_profile";
   if (normalized.includes("reddit")) return "reddit";
-  if (normalized.includes("facebook")) return "facebook";
-  if (normalized.includes("instagram")) return "instagram";
+  if (normalized.includes("facebook")) return "facebook_page";
+  if (normalized.includes("instagram")) return "instagram_business";
   if (normalized.includes("youtube")) return "youtube";
+  if (normalized.includes("quora")) return "quora_manual";
+  if (normalized.includes("whatsapp")) return "whatsapp_manual";
+  if (normalized.includes("email")) return "email_manual";
   if (normalized.includes("blog") || normalized.includes("seo")) return "blog";
   return "linkedin";
 }

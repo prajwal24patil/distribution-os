@@ -24,7 +24,15 @@ const advancedLinks = [
   { label: "Actions", path: "actions" },
   { label: "Approvals", path: "approvals" },
   { label: "Campaigns", path: "campaigns" },
+  { label: "Social Share Center", path: "social-share" },
 ];
+
+function platformLabel(platform: string) {
+  if (platform === "blog") return "Blog publishing";
+  if (platform === "x") return "X";
+  if (platform === "google_business_profile") return "Google Business Profile";
+  return platform.replace(/_/g, " ");
+}
 
 export default async function ProjectSettingsPage({ params, searchParams }: SettingsPageProps) {
   const { id } = await params;
@@ -120,7 +128,7 @@ export default async function ProjectSettingsPage({ params, searchParams }: Sett
             >
               <div>
                 <p className="text-sm font-semibold capitalize text-neutral-950">
-                  {connection.platform === "blog" ? "Blog publishing" : connection.platform}
+                  {platformLabel(connection.platform)}
                 </p>
                 <p className="mt-1 text-sm text-neutral-700">{connection.explanation}</p>
                 {connection.platform !== "blog" ? (

@@ -566,16 +566,23 @@ export type DistributionCycleUpdate = Partial<
 
 export type PublishingConnectionPlatform =
   | "linkedin"
+  | "x"
+  | "google_business_profile"
   | "reddit"
-  | "facebook"
-  | "instagram"
+  | "facebook_page"
+  | "instagram_business"
   | "youtube"
+  | "quora_manual"
+  | "whatsapp_manual"
+  | "email_manual"
   | "blog";
 
 export type PublishingConnectionStatus =
   | "not_connected"
   | "connected"
   | "expired"
+  | "manual_required"
+  | "rate_limited"
   | "permission_missing"
   | "disabled"
   | "integration_not_ready";
@@ -590,8 +597,13 @@ export type PublishingConnectionRow = {
   account_id: string;
   access_token_encrypted_placeholder: string;
   refresh_token_encrypted_placeholder: string;
+  token_reference: string;
+  refresh_token_reference: string;
   expires_at: string | null;
+  token_expires_at: string | null;
   permissions: string;
+  scopes: string;
+  last_error: string;
   last_checked_at: string | null;
   created_at: string;
   updated_at: string;
@@ -606,8 +618,13 @@ export type PublishingConnectionInsert = {
   account_id?: string;
   access_token_encrypted_placeholder?: string;
   refresh_token_encrypted_placeholder?: string;
+  token_reference?: string;
+  refresh_token_reference?: string;
   expires_at?: string | null;
+  token_expires_at?: string | null;
   permissions?: string;
+  scopes?: string;
+  last_error?: string;
   last_checked_at?: string | null;
 };
 

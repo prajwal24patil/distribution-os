@@ -1,9 +1,14 @@
 export type PublisherPlatform =
   | "linkedin"
+  | "x"
+  | "google_business_profile"
   | "reddit"
-  | "facebook"
-  | "instagram"
+  | "facebook_page"
+  | "instagram_business"
   | "youtube"
+  | "quora_manual"
+  | "whatsapp_manual"
+  | "email_manual"
   | "blog";
 
 export type PublisherStatus =
@@ -51,11 +56,17 @@ export type PublisherAdapter = {
 
 const setupNeeded: Record<PublisherPlatform, string> = {
   linkedin: "Create LinkedIn Developer App, request Share on LinkedIn permission, connect OAuth.",
+  x: "Create X Developer app, request official posting permissions, connect OAuth.",
+  google_business_profile:
+    "Create Google Cloud app, enable Business Profile APIs, connect verified profile.",
   reddit: "Create Reddit app, connect OAuth.",
-  facebook: "Create Meta app, connect Facebook page, request required publishing permissions.",
-  instagram:
-    "Create Meta app, connect Instagram business account, request required publishing permissions.",
+  facebook_page: "Create Meta app, connect Facebook Page, and request publishing permissions.",
+  instagram_business:
+    "Create Meta app, connect Instagram Business account, and request publishing permissions.",
   youtube: "Create Google Cloud OAuth app, enable YouTube Data API, connect channel.",
+  quora_manual: "Manual Quora draft only. No auto-publishing.",
+  whatsapp_manual: "Manual WhatsApp share only. No auto-sending.",
+  email_manual: "Manual email draft only. No auto-sending.",
   blog: "Internal DistributionOS blog publishing is ready.",
 };
 
@@ -102,10 +113,15 @@ function manualAdapter(platform: PublisherPlatform): PublisherAdapter {
 
 export const publisherAdapters: PublisherAdapter[] = [
   manualAdapter("linkedin"),
+  manualAdapter("x"),
+  manualAdapter("google_business_profile"),
   manualAdapter("reddit"),
-  manualAdapter("facebook"),
-  manualAdapter("instagram"),
+  manualAdapter("facebook_page"),
+  manualAdapter("instagram_business"),
   manualAdapter("youtube"),
+  manualAdapter("quora_manual"),
+  manualAdapter("whatsapp_manual"),
+  manualAdapter("email_manual"),
   manualAdapter("blog"),
 ];
 
@@ -118,12 +134,22 @@ export function getPublisherAdapter(platform: string) {
 
   if (normalized.includes("linkedin"))
     return publisherAdapters.find((adapter) => adapter.platform === "linkedin");
+  if (normalized === "x" || normalized.includes("twitter"))
+    return publisherAdapters.find((adapter) => adapter.platform === "x");
+  if (normalized.includes("google"))
+    return publisherAdapters.find((adapter) => adapter.platform === "google_business_profile");
   if (normalized.includes("reddit"))
     return publisherAdapters.find((adapter) => adapter.platform === "reddit");
   if (normalized.includes("facebook"))
-    return publisherAdapters.find((adapter) => adapter.platform === "facebook");
+    return publisherAdapters.find((adapter) => adapter.platform === "facebook_page");
+  if (normalized.includes("quora"))
+    return publisherAdapters.find((adapter) => adapter.platform === "quora_manual");
+  if (normalized.includes("whatsapp"))
+    return publisherAdapters.find((adapter) => adapter.platform === "whatsapp_manual");
+  if (normalized.includes("email"))
+    return publisherAdapters.find((adapter) => adapter.platform === "email_manual");
   if (normalized.includes("instagram"))
-    return publisherAdapters.find((adapter) => adapter.platform === "instagram");
+    return publisherAdapters.find((adapter) => adapter.platform === "instagram_business");
   if (normalized.includes("youtube"))
     return publisherAdapters.find((adapter) => adapter.platform === "youtube");
   if (normalized.includes("blog") || normalized.includes("seo")) {

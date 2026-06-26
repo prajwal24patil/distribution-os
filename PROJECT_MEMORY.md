@@ -35,6 +35,311 @@ Current known facts:
 - Primary goal: build a maintainable AI-assisted distribution platform
 - Current phase: 24/7 Daily Autopilot MVP for CareerScore with optimized loading, local QA checks, full tracking URLs, approve/copy/manual posting, and manual result capture
 
+## Current MVP State - Self-Healing CareerScore Revenue Engine
+
+Status: verified on local checks.
+
+DistributionOS now has a safer self-healing revenue-engine layer for CareerScore that coordinates deterministic growth assets, official-platform readiness, queue decisions, health checks, and manual fallback.
+
+### Root Architecture Added
+
+Added:
+
+- `apps/web/lib/agentSupervisor.ts`
+- `apps/web/lib/socialDeploymentEngine.ts`
+- `apps/web/lib/platformPublisherAdapters.ts`
+- `/projects/[id]/social-share`
+- `database/migrations/0018_create_agent_supervisor_and_social_publish_queue.sql`
+- `scripts/test-agent-supervisor.mjs`
+- `scripts/test-revenue-engine-resilience.mjs`
+- `scripts/test-social-deployment-engine.mjs`
+- `scripts/test-platform-publisher-adapters.mjs`
+
+The Master Agent Supervisor now models:
+
+- CareerScore Revenue Agent
+- Pain-Based Campaign Agent
+- Social Deployment Supervisor
+- Platform Connection Agent
+- Content Creation Agent
+- SEO/Blog Agent
+- X Trend Radar Agent
+- LinkedIn Growth Agent
+- Google Business Profile Agent
+- Reddit Community Agent
+- Instagram/Facebook Agent
+- YouTube Shorts Agent
+- Referral Agent
+- Proof Agent
+- Compliance/QC Agent
+- Publishing Agent
+- Tracking Agent
+- Health Agent
+- Recovery Agent
+- Analytics Agent
+
+Supervisor output includes:
+
+- run id
+- start and finish timestamps
+- agents started/completed/failed
+- recovered issues
+- warnings
+- manual actions needed
+- next safe action
+- overall status
+
+One failed agent is isolated so the rest of the run can continue. Failures are represented as safe warnings/recovered issues instead of exposing secrets or crashing the full run.
+
+### Preflight and Health Dashboard
+
+Preflight checks now cover:
+
+- `NEXT_PUBLIC_APP_URL`
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `CRON_SECRET`
+- project presence
+- tracking link generation
+- blog publisher availability
+- platform connection records
+- connected-platform token references/account ids
+- rate-limit/retry metadata
+
+Autopilot now includes a compact Agent Health panel with:
+
+- system status
+- agent completion count
+- failed agents
+- recovered issues
+- warnings
+- manual actions
+- tracking status
+- queue status
+- next safe action
+
+### Social Deployment Engine
+
+Added a publish-decision layer for generated assets.
+
+Supported decisions:
+
+- `auto_publish_ready`
+- `manual_required`
+- `manual_review_required`
+- `blocked_by_qc`
+- `blocked_by_connection`
+- `blocked_by_platform_rules`
+- `blocked_by_rate_limit`
+
+Rules:
+
+- blog remains internally auto-publish ready
+- LinkedIn, X, Google Business Profile, Reddit, Facebook Page, Instagram Business, and YouTube require official connected APIs/OAuth before auto-publishing
+- WhatsApp, Quora, and email remain manual-only
+- Reddit can require manual review for community rules
+- rate-limited platforms move into a retry-safe state
+- failed/missing tracking links move to manual review instead of unsafe posting
+- QC-rejected assets are blocked
+
+### Platform Publisher Adapter Interface
+
+Added official-adapter contract methods:
+
+- `validateConnection`
+- `validateAsset`
+- `publish`
+- `schedule`
+- `getPublishStatus`
+- `recoverFailure`
+
+Adapters exist for:
+
+- Blog
+- LinkedIn
+- X
+- Google Business Profile
+- Reddit
+- Facebook Page
+- Instagram Business
+- YouTube
+- Email manual
+- Manual fallback
+
+Current behavior:
+
+- blog can publish internally through existing blog publisher when a scheduled post exists
+- non-blog adapters never pretend to publish
+- connected social stubs require official integration readiness, token/account references, and scopes before future publishing work
+- adapter results never expose tokens
+- adapters do not log secrets
+
+### Database Architecture Added
+
+Migration added:
+
+- `database/migrations/0018_create_agent_supervisor_and_social_publish_queue.sql`
+
+It extends `publishing_connections` for:
+
+- `linkedin`
+- `x`
+- `google_business_profile`
+- `reddit`
+- `facebook_page`
+- `instagram_business`
+- `youtube`
+- `quora_manual`
+- `whatsapp_manual`
+- `email_manual`
+- `blog`
+
+Connection statuses now include:
+
+- `not_connected`
+- `connected`
+- `expired`
+- `permission_missing`
+- `manual_required`
+- `integration_not_ready`
+- `rate_limited`
+- `disabled`
+
+Added connection metadata:
+
+- token reference
+- refresh token reference
+- token expiry
+- scopes
+- last error
+
+New tables:
+
+- `agent_runs`
+- `agent_run_steps`
+- `agent_health_checks`
+- `agent_recovery_events`
+- `revenue_campaigns`
+- `social_share_assets`
+- `social_publish_queue`
+
+All new tables have owner-scoped RLS policies. The migration uses `drop policy if exists` plus `create policy` so it can be rerun safely.
+
+Migration required: yes, run `database/migrations/0018_create_agent_supervisor_and_social_publish_queue.sql` after prior migrations.
+
+### Social Share Center
+
+Added internal page:
+
+- `/projects/[id]/social-share`
+
+It shows:
+
+- ready-to-share revenue assets
+- platform
+- QC status
+- publish decision
+- connection status
+- campaign/audience/CTA context
+- tracking link
+- manual instructions
+- Copy Post
+- Copy Link
+- disabled future Retry/Approve controls
+
+This page does not auto-post externally.
+
+### Current Automatic Behavior
+
+DistributionOS can now automatically:
+
+- generate deterministic CareerScore revenue assets
+- run revenue QC
+- create health/supervisor summaries
+- decide safe deployment mode
+- keep blog internally auto-publish eligible
+- create manual-required social work
+- surface tracking links
+- isolate failed agent work
+- produce retry/manual-review states
+- show founder-safe next actions
+
+### Still Requires Official Connection
+
+These require official platform apps/OAuth/API permissions before real auto-publishing:
+
+- LinkedIn
+- X
+- Google Business Profile
+- Reddit
+- Facebook Page
+- Instagram Business
+- YouTube
+
+No unofficial scraping, browser bots, fake engagement, trend manipulation, auto-DMs, or guaranteed trending behavior was added.
+
+### Still Requires Human/Manual Approval
+
+Manual approval/action remains required for:
+
+- WhatsApp shares
+- Quora answers
+- manual email drafts
+- Reddit/community rule-sensitive posts
+- QC-blocked edits
+- unconnected social platforms
+- failed connection/rate-limit recoveries
+- any external posting before official connections are live
+
+### Regression Coverage
+
+Added npm scripts:
+
+- `npm run test:agent-supervisor`
+- `npm run test:revenue-engine-resilience`
+- `npm run test:social-deployment-engine`
+- `npm run test:platform-publisher-adapters`
+
+Updated:
+
+- `npm run test:careerscore-revenue-engine`
+
+### Checks Verified
+
+Passed:
+
+- `npm run format`
+- `npm run lint`
+- `npm run typecheck`
+- `npm run build`
+- `backend/.venv/Scripts/python.exe -m pytest` from `backend/`
+- `npm run test:agent-supervisor`
+- `npm run test:revenue-engine-resilience`
+- `npm run test:social-deployment-engine`
+- `npm run test:platform-publisher-adapters`
+- `npm run test:careerscore-revenue-engine`
+- `npm run test:dashboard-qc`
+- `npm run test:autopilot`
+- `npm run test:blog-auto-publish`
+- `npm run test:system-runner`
+- `npm run test:publishing-system`
+- `npm run test:autonomous-distribution`
+- `npm run test:cron-production-route`
+
+### Production Deploy Steps
+
+1. Apply migrations through `0018_create_agent_supervisor_and_social_publish_queue.sql` in Supabase.
+2. Confirm production env vars:
+   - `NEXT_PUBLIC_APP_URL`
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY`
+   - `CRON_SECRET`
+3. Deploy web app to Vercel.
+4. Confirm `/api/cron/distribution` still returns structured JSON with production env.
+5. Connect official social platform apps later before enabling real social auto-publishing.
+
 ## Daily Autopilot Local QA and Performance Notes
 
 Fully tested, fixed, and optimized the local Autopilot flow for the current manual CareerScore growth loop.
@@ -127,6 +432,215 @@ Last local Autopilot QA verification:
 - `npm run typecheck`
 - `npm run build`
 - `npm run test:autopilot`
+
+## Current MVP State - CareerScore Revenue Engine
+
+Status: verified on local checks.
+
+Added the deterministic CareerScore Revenue Engine for safe, trackable, paid-report-oriented growth workflows.
+
+Current safety posture:
+
+- no fake engagement
+- no fake guarantees
+- no fake success claims
+- no illegal scraping
+- no mass DM automation
+- no platform-rule abuse
+- no social auto-publishing unless an official platform connection exists
+- blog publishing remains internally auto-publish eligible
+
+### Revenue Brain
+
+Added:
+
+- `apps/web/lib/careerScoreRevenueEngine.ts`
+
+The revenue brain includes:
+
+- target audiences
+- pain points
+- objections
+- offers
+- hooks
+- CTAs
+- platform strategy
+- forbidden claims
+- compliance rules
+
+Default CareerScore audiences:
+
+- Freshers applying but no callback
+- 2023/2024/2025 passouts
+- Gap-year candidates
+- Data analyst aspirants
+- Software job seekers
+- Working professionals wanting salary jump
+- Resume uploaded but not paid
+- Paid users/referral candidates
+
+Default offers:
+
+- Free CareerScore preview
+- INR 99 basic report
+- INR 199 advanced roadmap
+- INR 499 premium CV + roadmap later
+
+### Pain-Based Campaign Factory
+
+The revenue engine creates deterministic assets from:
+
+```text
+audience + pain + hook + CTA + offer + tracking link
+```
+
+Generated asset types:
+
+- LinkedIn founder post
+- LinkedIn short post
+- X post
+- X thread
+- Google Business Profile post draft
+- Reddit helpful reply draft
+- Quora answer draft
+- WhatsApp share text
+- Email follow-up draft
+- Instagram caption
+- YouTube Shorts script
+- SEO blog article
+- Shareable PDF/report outline
+
+### Social Share Center
+
+Added:
+
+- `/projects/[id]/social-share`
+
+The Social Share Center shows:
+
+- ready-to-share assets
+- platform
+- manual-required / auto-publish-ready status
+- copy button
+- tracking link
+- last shared/published placeholder
+- QC status
+- X trend angles
+
+The page does not publish externally. It prepares founder-approved copy and tracking links only.
+
+### Platform Connection Model
+
+Extended platform support for:
+
+- linkedin
+- x
+- google_business_profile
+- reddit
+- quora_manual
+- whatsapp_manual
+- instagram_manual
+- youtube_manual
+- blog
+
+Supported connection statuses:
+
+- not_connected
+- connected
+- manual_required
+- integration_not_ready
+- permission_missing
+- disabled
+
+Added migration:
+
+- `database/migrations/0017_extend_revenue_engine_publishing_connections.sql`
+
+Migration required: yes.
+
+### Revenue Agents
+
+Added deterministic helpers for:
+
+- X Trend Radar Agent
+- LinkedIn Growth Agent
+- Google/SEO Growth Agent
+- Shareable Report/PDF Outline Agent
+- Proof Engine
+- Referral Share Agent
+- Conversion Optimizer Agent
+
+Important behaviors:
+
+- X trend radar creates safe trend angles and hashtags without fake engagement or trend promises
+- Google Business Profile remains manual unless officially connected
+- report/PDF outline uses `needs real data` when stats are unavailable
+- proof engine uses real metrics only and returns `needs data` when unavailable
+- conversion optimizer clearly says `Real CareerScore conversion data not connected yet.` when webhook/conversion data is missing
+
+### Compliance/QC Guardrail
+
+Every generated revenue asset is checked for:
+
+- no fake guarantees
+- no scraped personal data
+- no fake trend manipulation
+- no fake likes/retweets/comments
+- no mass DM spam
+- no illegal claims
+- no overpromising job placement
+- platform status respected
+- tracking link present
+- CTA present
+
+### Autopilot Integration
+
+Autopilot now includes a compact CareerScore Revenue Engine section with:
+
+- Today's revenue move
+- Best audience to target
+- Assets created today
+- Social assets ready
+- Blog auto-published
+- Manual social shares pending
+- X trend angles ready
+- Referral campaign ready
+- Weakest funnel step
+- Next best action
+
+### Regression Coverage
+
+Added:
+
+- `scripts/test-careerscore-revenue-engine.mjs`
+- `npm run test:careerscore-revenue-engine`
+
+The test verifies:
+
+- campaign factory creates all required asset types
+- tracking link is attached
+- QC rejects fake guarantees and fake trend manipulation
+- social assets stay manual-required if no official connection exists
+- blog remains auto-publish eligible
+- X trend radar creates safe trend angles
+- proof engine does not fake stats
+- conversion optimizer handles missing CareerScore webhook data
+- dashboard data shape is valid
+
+### Checks Verified
+
+Passed:
+
+- `npm run format`
+- `npm run lint`
+- `npm run typecheck`
+- `npm run build`
+- `npm run test:careerscore-revenue-engine`
+- `npm run test:dashboard-qc`
+- `npm run test:autopilot`
+- `npm run test:blog-auto-publish`
+- `npm run test:system-runner`
+- `backend/.venv/Scripts/python.exe -m pytest` from `backend/`
 
 ## Current MVP State - Production Cron JSON Hardening
 

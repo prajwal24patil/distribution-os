@@ -10,6 +10,11 @@ import { CopyButton } from "@/components/ui/CopyButton";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { loadAutopilotPageData } from "@/lib/autopilotData";
 import { requireUser } from "@/lib/auth";
+import {
+  buildRevenueDashboardSummary,
+  createPainBasedCampaignAssets,
+} from "@/lib/careerScoreRevenueEngine";
+import { buildAgentHealthDashboard, runMasterAgentSupervisor } from "@/lib/agentSupervisor";
 import { sanitizeCareerScoreCopy, sanitizeCareerScoreTitle } from "@/lib/careerScoreCopy";
 import { getPublicAppUrl, toPublicUrl } from "@/lib/publicUrl";
 import { isBlogPlatform } from "@/lib/blogPublisher";
@@ -35,6 +40,7 @@ const advancedLinks = [
   { label: "Actions", path: "actions" },
   { label: "Approvals", path: "approvals" },
   { label: "Campaigns", path: "campaigns" },
+  { label: "Social Share Center", path: "social-share" },
 ];
 
 function Metric({ label, value }: { label: string; value: string | number }) {
@@ -299,6 +305,27 @@ export default async function AutopilotPage({ params, searchParams }: AutopilotP
     data.distributionCycle?.next_cycle_plan ||
     data.dailyRun?.next_step ||
     data.results.nextBestAction;
+  const revenueTrackingUrl = toPublicUrl(
+    data.readyItems.find((item) => item.tracking_url)?.tracking_url ||
+      data.scheduledPosts.find((post) => post.tracking_url)?.tracking_url ||
+      "",
+    origin,
+  );
+  const revenueAssets = createPainBasedCampaignAssets({
+    trackingLink: revenueTrackingUrl,
+    connections: data.publishingConnections,
+  });
+  const revenueSummary = buildRevenueDashboardSummary({
+    assets: revenueAssets,
+    scheduledPosts: data.scheduledPosts,
+    conversionEvents: data.conversionEvents,
+  });
+  const supervisor = runMasterAgentSupervisor({
+    project,
+    connections: data.publishingConnections,
+    trackingLink: revenueTrackingUrl,
+  });
+  const agentHealth = buildAgentHealthDashboard(supervisor);
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
@@ -360,8 +387,8 @@ export default async function AutopilotPage({ params, searchParams }: AutopilotP
           <Metric label="Blog published" value={data.results.blogPublishedCount} />
         </div>
         <p className="mt-4 text-sm leading-6 text-neutral-700">
-          Blog publishing is auto-publish ready. LinkedIn, Reddit, Facebook, Instagram, and YouTube
-          remain manual-required until official accounts are connected.
+          Blog publishing is auto-publish ready. LinkedIn, X, Reddit, Google, Instagram, WhatsApp,
+          Quora, and YouTube remain manual-required until official accounts are connected.
         </p>
       </section>
 
@@ -374,11 +401,55 @@ export default async function AutopilotPage({ params, searchParams }: AutopilotP
         </h3>
       </section>
 
+      <section className="rounded border border-neutral-300 bg-white p-5">
+        <div className="flex flex-col gap-2 border-b border-neutral-200 pb-4">
+          <p className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+            CareerScore Revenue Engine
+          </p>
+          <h3 className="text-xl font-semibold text-neutral-950">
+            {revenueSummary.todays_revenue_move}
+          </h3>
+        </div>
+        <div className="mt-4 grid gap-4 md:grid-cols-3">
+          <Metric label="Best audience" value={revenueSummary.best_audience_to_target} />
+          <Metric label="Assets today" value={revenueSummary.assets_created_today} />
+          <Metric label="Social ready" value={revenueSummary.social_assets_ready} />
+          <Metric label="Blog auto-published" value={data.results.blogPublishedCount} />
+          <Metric label="Manual shares" value={revenueSummary.manual_social_shares_pending} />
+          <Metric label="X angles ready" value={revenueSummary.x_trend_angles_ready} />
+          <Metric label="Referral campaign" value={revenueSummary.referral_campaign_ready} />
+          <Metric label="Weakest funnel" value={revenueSummary.weakest_funnel_step} />
+          <Metric label="Next action" value={revenueSummary.next_best_action} />
+        </div>
+      </section>
+
       <SystemHealthCard
         dashboardQc={data.dashboardQc}
         latestSystemTest={data.latestSystemTest}
         projectId={project.id}
       />
+
+      <section className="rounded border border-neutral-300 bg-white p-5">
+        <p className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+          Agent Health
+        </p>
+        <div className="mt-4 grid gap-4 md:grid-cols-4">
+          <Metric label="System status" value={agentHealth.system_status} />
+          <Metric label="Agent health" value={agentHealth.agent_health} />
+          <Metric label="Failed agents" value={agentHealth.failed_agents.length} />
+          <Metric label="Recovered issues" value={agentHealth.recovered_issues.length} />
+          <Metric label="Warnings" value={agentHealth.warnings_before_crash.length} />
+          <Metric label="Manual actions" value={agentHealth.manual_actions_needed.length} />
+          <Metric label="Tracking status" value={revenueTrackingUrl ? "Ready" : "Needs link"} />
+          <Metric
+            label="Queue status"
+            value={revenueSummary.manual_social_shares_pending > 0 ? "Manual pending" : "Ready"}
+          />
+        </div>
+        <p className="mt-4 text-sm leading-6 text-neutral-700">
+          Next safe action: {agentHealth.next_safe_action}
+        </p>
+      </section>
 
       <section className="rounded border border-neutral-300 bg-white p-5">
         <div className="flex flex-col gap-2 border-b border-neutral-200 pb-4">
