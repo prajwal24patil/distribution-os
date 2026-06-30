@@ -3,6 +3,7 @@ import { ingestProductUrl } from "@/lib/autonomousDistributionEngine";
 import { publishDuePosts } from "@/lib/publishingWorker";
 import { scheduleApprovedAssets } from "@/lib/publishingScheduler";
 import { toPublicUrl } from "@/lib/publicUrl";
+import { toSafeIntegerScore } from "@/lib/scoreSafety";
 import { createClient } from "@/lib/supabase/server";
 import type {
   CampaignItemInsert,
@@ -193,10 +194,10 @@ export async function runGoAutopilot(projectId: string): Promise<GoAutopilotSumm
       blog_outline: asset.blogOutline || "",
       caption: asset.caption || "",
       referral_copy: asset.referralCopy || "",
-      quality_score: asset.qualityScore - index * 0.1,
+      quality_score: toSafeIntegerScore(asset.qualityScore - index * 0.1),
       qa_status: asset.qaStatus,
       qa_reason: asset.qaReason,
-      predicted_rank_score: asset.predictedRankScore - index * 0.1,
+      predicted_rank_score: toSafeIntegerScore(asset.predictedRankScore - index * 0.1),
       publishing_status:
         asset.platform === "Blog" ? "auto_publish_ready" : "manual_approval_required",
       result_summary: "Created by GO Autopilot. Awaiting publishing or manual result.",

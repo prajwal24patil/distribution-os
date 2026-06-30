@@ -6,6 +6,7 @@ import {
 } from "@/lib/contentSimulation";
 import { qaContentAsset } from "@/lib/qaAgent";
 import { generateShortVideoScript } from "@/lib/shortVideoEngine";
+import { toSafeIntegerScore } from "@/lib/scoreSafety";
 import { createClient } from "@/lib/supabase/server";
 import type {
   CampaignItemInsert,
@@ -519,10 +520,10 @@ export async function publishOrQueue(projectId: string) {
       caption: distributionAsset.caption || "",
       landing_copy: distributionAsset.landingCopy || "",
       referral_copy: distributionAsset.referralCopy || "",
-      quality_score: score,
+      quality_score: toSafeIntegerScore(score),
       qa_status: qa.status,
       qa_reason: qa.reason,
-      predicted_rank_score: score,
+      predicted_rank_score: toSafeIntegerScore(score),
       publishing_status: "manual_approval_required",
       result_summary: "Waiting for publishing connection or manual approval.",
     };

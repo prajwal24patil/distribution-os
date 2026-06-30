@@ -7,7 +7,13 @@ import {
   generateXTrendAngles,
 } from "@/lib/careerScoreRevenueEngine";
 import { createSocialPublishQueueItem, decideSocialDeployment } from "@/lib/socialDeploymentEngine";
-import { getPublicAppUrl, sanitizePostTrackingLinks, toPublicUrl } from "@/lib/publicUrl";
+import {
+  getPublicAppUrl,
+  hasLocalTrackingUrl,
+  isProductionRuntime,
+  sanitizePostTrackingLinks,
+  toPublicUrl,
+} from "@/lib/publicUrl";
 import { requireUser } from "@/lib/auth";
 import type { PublishingConnectionRow, TrackingLinkRow } from "@/lib/supabase/types";
 
@@ -72,6 +78,11 @@ export default async function SocialShareCenterPage({ params }: SocialShareCente
     connections,
   });
   const trendAngles = generateXTrendAngles(trackingLink ? trackingUrl : "");
+  const hasUnsafeVisibleTrackingUrl =
+    isProductionRuntime() &&
+    assets.some((asset) =>
+      hasLocalTrackingUrl(`${asset.title} ${asset.content} ${asset.tracking_link} ${trackingUrl}`),
+    );
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
@@ -99,6 +110,16 @@ export default async function SocialShareCenterPage({ params }: SocialShareCente
           {linksResult.error?.message || connectionsResult.error?.message}
         </div>
       ) : null}
+
+      {hasUnsafeVisibleTrackingUrl ? (
+        <div className="rounded border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          Local tracking links detected. Repair required before posting.
+        </div>
+      ) : (
+        <div className="rounded border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+          Public tracking links OK.
+        </div>
+      )}
 
       <section className="rounded border border-neutral-300 bg-white">
         <div className="border-b border-neutral-200 px-5 py-4">

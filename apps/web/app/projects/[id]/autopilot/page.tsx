@@ -29,6 +29,7 @@ type AutopilotPageProps = {
   }>;
   searchParams: Promise<{
     error?: string;
+    repaired?: string;
     success?: string;
   }>;
 };
@@ -285,7 +286,7 @@ function ScheduledPostCard({ post, origin }: { post: ScheduledPostRow; origin: s
 
 export default async function AutopilotPage({ params, searchParams }: AutopilotPageProps) {
   const { id } = await params;
-  const { error: actionError, success } = await searchParams;
+  const { error: actionError, repaired, success } = await searchParams;
   const { supabase, user } = await requireUser();
   const requestHeaders = await headers();
   const host = requestHeaders.get("x-forwarded-host") || requestHeaders.get("host");
@@ -380,7 +381,17 @@ export default async function AutopilotPage({ params, searchParams }: AutopilotP
 
       {hasUnsafeVisibleTrackingUrl ? (
         <div className="rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Local tracking links detected. Run link repair before posting.
+          Local tracking links detected. Repair required before posting.
+        </div>
+      ) : (
+        <div className="rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          Public tracking links OK.
+        </div>
+      )}
+
+      {repaired && Number(repaired) > 0 ? (
+        <div className="rounded border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+          Repaired {repaired} saved tracking link record{Number(repaired) === 1 ? "" : "s"}.
         </div>
       ) : null}
 

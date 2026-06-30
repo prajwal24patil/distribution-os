@@ -14,16 +14,41 @@ export function isLocalPublicUrl(value = "") {
   return LOCAL_PUBLIC_URL_PATTERN.test(value);
 }
 
+export function isValidProductionPublicAppUrl(value = "") {
+  if (!value || isLocalPublicUrl(value)) return false;
+
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "https:" && Boolean(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
 export function getPublicUrlWarning() {
-  return isProductionRuntime() && !process.env.NEXT_PUBLIC_APP_URL?.trim()
-    ? "NEXT_PUBLIC_APP_URL is required in production before generating public posts."
-    : "";
+  if (!isProductionRuntime()) return "";
+
+  const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
+
+  if (!configured) {
+    return "NEXT_PUBLIC_APP_URL is required in production before generating public posts.";
+  }
+
+  if (!isValidProductionPublicAppUrl(configured)) {
+    return "NEXT_PUBLIC_APP_URL must be a valid https public URL in production.";
+  }
+
+  return "";
 }
 
 export function getPublicAppUrl(requestOrigin = "") {
   const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
 
   if (configured) {
+    if (isProductionRuntime() && !isValidProductionPublicAppUrl(configured)) {
+      return "";
+    }
+
     return configured.replace(/\/$/, "");
   }
 
@@ -64,6 +89,14 @@ export function requirePublicAppUrlForGeneration() {
   return publicUrl;
 }
 
+export function getSafePublicTrackingUrl(trackingId: string) {
+  const normalizedId = trackingId.replace(/^\/?t\//, "").trim();
+
+  if (!normalizedId) return "";
+
+  return toPublicUrl(`/t/${normalizedId}`);
+}
+
 export function sanitizePublicTrackingUrlWithWarning(url: string) {
   if (!url) return { url: "", warning: "" };
 
@@ -87,7 +120,7 @@ export function sanitizePublicTrackingUrlWithWarning(url: string) {
     }
 
     return {
-      url: parsed ? `${configured}${parsed[1]}` : url,
+      url: parsed ? `${configured}${parsed[1]}` : url.replace(LOCAL_PUBLIC_URL_PATTERN, configured),
       warning: "",
     };
   }

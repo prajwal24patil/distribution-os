@@ -29,6 +29,7 @@ const publication = read("apps/web/app/publications/[slug]/page.tsx");
 const revenueEngine = read("apps/web/lib/careerScoreRevenueEngine.ts");
 const publisherQueue = read("apps/web/lib/publisherQueue.ts");
 const scheduler = read("apps/web/lib/publishingScheduler.ts");
+const cronRoute = read("apps/web/app/api/cron/distribution/route.ts");
 
 for (const marker of [
   "getPublicAppUrl",
@@ -38,6 +39,8 @@ for (const marker of [
   "sanitizePostTrackingLinks",
   "sanitizePublicTrackingUrlWithWarning",
   "requirePublicAppUrlForGeneration",
+  "getSafePublicTrackingUrl",
+  "isValidProductionPublicAppUrl",
   "getPublicUrlWarning",
   "productionPublicAppUrlForRepair",
   "https://distribution-os-web.vercel.app",
@@ -63,8 +66,17 @@ ok(
   "production blocks generation if NEXT_PUBLIC_APP_URL is missing",
 );
 ok(
+  publicUrl.includes("NEXT_PUBLIC_APP_URL must be a valid https public URL in production"),
+  "production blocks generation if NEXT_PUBLIC_APP_URL is invalid",
+);
+ok(
   publicUrl.includes("if (isProductionRuntime())") && publicUrl.includes('return ""'),
   "production never falls back to request origin",
+);
+ok(publicUrl.includes('parsed.protocol === "https:"'), "production public app URL must be https");
+ok(
+  publicUrl.includes("replace(LOCAL_PUBLIC_URL_PATTERN, configured)"),
+  "local URL base is replaced",
 );
 
 for (const table of [
@@ -96,12 +108,16 @@ for (const field of [
 ok(actions.includes("repairLegacyLocalTrackingLinks"), "Run Autopilot repairs old saved links");
 ok(actions.includes("requirePublicAppUrlForGeneration"), "new generation requires public app URL");
 ok(
-  autopilot.includes("Local tracking links detected. Run link repair before posting."),
+  autopilot.includes("Local tracking links detected. Repair required before posting."),
   "Autopilot warning exists",
 );
+ok(autopilot.includes("Public tracking links OK."), "Autopilot OK state exists");
+ok(autopilot.includes("Repaired {repaired} saved tracking link record"), "repair count is shown");
 ok(autopilot.includes("sanitizePostTrackingLinks"), "scheduled work output sanitizes post links");
 ok(campaigns.includes("sanitizePostTrackingLinks"), "campaign output sanitizes post links");
 ok(socialShare.includes("sanitizePostTrackingLinks"), "social share output sanitizes post links");
+ok(socialShare.includes("hasLocalTrackingUrl"), "social share detects local URLs");
+ok(socialShare.includes("Public tracking links OK."), "social share OK state exists");
 ok(blogPublisher.includes("sanitizePostTrackingLinks"), "blog CTA/content has no local URLs");
 ok(publication.includes("sanitizePostTrackingLinks"), "public blog page sanitizes content links");
 ok(
@@ -113,6 +129,11 @@ ok(
   "manual share queue sanitizes tracking links",
 );
 ok(scheduler.includes("sanitizePublicTrackingUrl"), "scheduled work rows sanitize tracking links");
+ok(cronRoute.includes("repairCronProjectTrackingLinks"), "cron repairs old saved links first");
+ok(cronRoute.includes("links_repaired"), "cron reports repaired link count");
+ok(cronRoute.includes("getSafePublicTrackingUrl"), "cron creates safe public tracking links");
+ok(cronRoute.includes("sanitizePublicTrackingUrl"), "cron scheduled rows sanitize tracking links");
+ok(cronRoute.includes("NEXT_PUBLIC_APP_URL_INVALID"), "cron blocks invalid production public URL");
 
 if (failures.length > 0) {
   console.error("\nPublic tracking link QA failed:");

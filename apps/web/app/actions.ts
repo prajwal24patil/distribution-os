@@ -18,6 +18,7 @@ import { applySafeFixes, detectGrowthProblems } from "@/lib/growthProblemSolver"
 import { markPostPublished, scheduleApprovedAssets } from "@/lib/publishingScheduler";
 import { publishDuePosts } from "@/lib/publishingWorker";
 import { requirePublicAppUrlForGeneration } from "@/lib/publicUrl";
+import { toSafeIntegerScore } from "@/lib/scoreSafety";
 import { createClient } from "@/lib/supabase/server";
 import { repairLegacyLocalTrackingLinks } from "@/lib/trackingLinkRepair";
 import { runFullSystemTest } from "@/lib/systemTestRunner";
@@ -178,7 +179,7 @@ function readyWorkText(readyWork: string[]) {
 async function preparePublicTrackingLinks(projectId: string, ownerId: string, pathname: string) {
   try {
     requirePublicAppUrlForGeneration();
-    await repairLegacyLocalTrackingLinks(projectId, ownerId);
+    return await repairLegacyLocalTrackingLinks(projectId, ownerId);
   } catch (error) {
     redirectWithError(
       pathname,
@@ -253,7 +254,7 @@ export async function createProject(formData: FormData) {
       owner: getString(formData, "owner", "Founder"),
       goal: getString(formData, "goal"),
       summary: getString(formData, "summary"),
-      progress: getNumber(formData, "progress"),
+      progress: toSafeIntegerScore(getString(formData, "progress")),
       experiments: getNumber(formData, "experiments"),
       content_items: getNumber(formData, "content_items"),
       next_action: getString(formData, "next_action"),
@@ -280,7 +281,7 @@ export async function createProject(formData: FormData) {
           owner: "Founder",
           goal: data.goal,
           summary: "",
-          progress: 0,
+          progress: toSafeIntegerScore(0),
           experiments: 0,
           content_items: 0,
           next_action: "",
@@ -318,7 +319,7 @@ export async function updateProject(formData: FormData) {
       owner: getString(formData, "owner", "Founder"),
       goal: getString(formData, "goal"),
       summary: getString(formData, "summary"),
-      progress: getNumber(formData, "progress"),
+      progress: toSafeIntegerScore(getString(formData, "progress")),
       experiments: getNumber(formData, "experiments"),
       content_items: getNumber(formData, "content_items"),
       next_action: getString(formData, "next_action"),
@@ -1629,9 +1630,12 @@ export async function startDistributionEngine(formData: FormData) {
     redirectWithError("/projects", "Project is required.");
   }
 
+  let repairCount = 0;
+
   try {
     requirePublicAppUrlForGeneration();
-    await repairLegacyLocalTrackingLinks(projectId, user.id);
+    const repair = await repairLegacyLocalTrackingLinks(projectId, user.id);
+    repairCount = repair.repaired;
     await runDistributionCycle(projectId);
     await scheduleApprovedAssets(projectId);
     await publishDuePosts(10, { projectId, ownerId: user.id });
@@ -1644,7 +1648,7 @@ export async function startDistributionEngine(formData: FormData) {
 
   revalidatePath(pathname);
   revalidatePath(`/projects/${projectId}/campaigns`);
-  redirect(`${pathname}?success=distribution`);
+  redirect(`${pathname}?success=distribution&repaired=${repairCount}`);
 }
 
 export async function goAutopilotAction(formData: FormData) {
@@ -1664,8 +1668,11 @@ export async function goAutopilotAction(formData: FormData) {
     redirectWithError("/projects", "Project is required.");
   }
 
+  let repairCount = 0;
+
   try {
-    await preparePublicTrackingLinks(projectId, user.id, pathname);
+    const repair = await preparePublicTrackingLinks(projectId, user.id, pathname);
+    repairCount = repair.repaired;
     await runGoAutopilot(projectId);
   } catch (error) {
     redirectWithError(pathname, error instanceof Error ? error.message : "GO Autopilot failed.");
@@ -1674,7 +1681,7 @@ export async function goAutopilotAction(formData: FormData) {
   revalidatePath(pathname);
   revalidatePath(`/projects/${projectId}/campaigns`);
   revalidatePath(`/projects/${projectId}/social-share`);
-  redirect(`${pathname}?success=go-autopilot`);
+  redirect(`${pathname}?success=go-autopilot&repaired=${repairCount}`);
 }
 
 export async function approvePublisherQueueItem(formData: FormData) {

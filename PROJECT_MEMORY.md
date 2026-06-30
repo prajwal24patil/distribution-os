@@ -300,6 +300,257 @@ Passed:
 - `npm run test:autopilot`
 - `backend/.venv/Scripts/python.exe -m pytest` from `backend/`
 
+## Current MVP State - Production Tracking Link Auto-Repair
+
+Status: verified on local checks.
+
+Completed a focused production tracking-link audit and hardening pass so generated, scheduled, social, manual, blog, cron-created, and displayed post content cannot keep local/LAN tracking URLs in production.
+
+### Root Cause
+
+The previous tracking-link foundation existed, but several gaps remained:
+
+- production `NEXT_PUBLIC_APP_URL` validation only checked presence, not whether the URL was a valid public HTTPS URL
+- cron used the admin client and did not run the user-session repair helper before creating/scheduling work
+- cron-created tracking URLs were still relative and not passed through the canonical public tracking helper
+- Autopilot warned on local links but did not show the requested OK state or repaired count
+- Social Share Center sanitized content but did not show a visible local-link warning or OK state
+
+### Audit Findings
+
+Audited code paths and database-facing logic for:
+
+- `localhost`
+- `0.0.0.0`
+- `127.0.0.1`
+- `192.168`
+- `NEXT_PUBLIC_APP_URL`
+- tracking link builders
+- public URL helpers
+- post generators
+- scheduled work renderers
+- social share renderers
+- blog/publication CTA builders
+- publisher queue and scheduler paths
+- cron-generated distribution work
+
+Expected local-only references remain in:
+
+- `.env.example`
+- local development fallback
+- tests
+- regex detection/sanitizer logic
+
+Production-facing tracking paths are now guarded or sanitized.
+
+### Public URL Helper
+
+Updated:
+
+- `apps/web/lib/publicUrl.ts`
+
+Added/strengthened:
+
+- `isValidProductionPublicAppUrl`
+- `getSafePublicTrackingUrl`
+- stricter `getPublicUrlWarning`
+- stricter `getPublicAppUrl`
+- stricter `requirePublicAppUrlForGeneration`
+- safer local-base replacement inside `sanitizePublicTrackingUrl`
+
+Production behavior:
+
+- requires `NEXT_PUBLIC_APP_URL`
+- rejects local/LAN public URLs
+- requires HTTPS public URL
+- never falls back to request origin
+- blocks public asset generation if the production public URL is missing or invalid
+
+Local development still allows localhost for local-only testing.
+
+### Auto-Repair
+
+Existing user-session repair remains:
+
+- `repairLegacyLocalTrackingLinks(projectId, ownerId)`
+
+It repairs:
+
+- `tracking_links.tracking_url`
+- `publisher_queue` text/link fields
+- `scheduled_posts` text/link fields
+- `campaign_items.content`
+- `campaign_items.utm_link`
+- `autopilot_runs.work_created`
+- `daily_autopilot_runs` summary fields
+
+Added cron-side service-role repair inside:
+
+- `apps/web/app/api/cron/distribution/route.ts`
+
+Cron now:
+
+- validates `NEXT_PUBLIC_APP_URL`
+- runs project-level tracking-link repair before generation/scheduling
+- creates cron tracking URLs with `getSafePublicTrackingUrl`
+- sanitizes cron queue and scheduled post rows
+- returns `links_repaired` in the cron JSON response
+
+### Dashboard Signals
+
+Updated:
+
+- `apps/web/app/projects/[id]/autopilot/page.tsx`
+- `apps/web/app/projects/[id]/social-share/page.tsx`
+
+Autopilot and Social Share Center now show:
+
+- `Local tracking links detected. Repair required before posting.`
+- `Public tracking links OK.`
+
+Autopilot also shows repaired record count after GO Autopilot / Run Autopilot redirects.
+
+### Regression Coverage
+
+Updated:
+
+- `scripts/test-public-tracking-links.mjs`
+
+The test now verifies:
+
+- localhost links are replaced
+- `192.168.x.x` links are replaced
+- `0.0.0.0` links are replaced
+- `127.0.0.1` links are replaced
+- tracking IDs are preserved
+- query params are preserved
+- post content is sanitized
+- scheduled work output has no local URL in production
+- social share output has no local URL in production
+- blog/publication CTA content has no local URL in production
+- production blocks public asset generation if `NEXT_PUBLIC_APP_URL` is missing or invalid
+- local development can still use localhost
+- cron repairs old saved links before generation
+- cron reports repaired link count
+
+### Migration Required
+
+No migration required.
+
+This is application-level URL validation, sanitization, rendering, and safe repair over existing tables.
+
+### Checks Verified
+
+Passed:
+
+- `npm run format`
+- `npm run lint`
+- `npm run typecheck`
+- `npm run build`
+- `npm run test:public-tracking-links`
+- `npm run test:dashboard-qc`
+- `npm run test:autopilot`
+- `npm run test:blog-auto-publish`
+- `npm run test:system-runner`
+- `backend/.venv/Scripts/python.exe -m pytest` from `backend/`
+
+## Current MVP State - Integer Score Safety
+
+Status: verified on local checks.
+
+Fixed the GO Autopilot production error:
+
+```text
+invalid input syntax for type integer: "89.9"
+```
+
+### Root Cause
+
+The GO Autopilot publisher queue payload ranked approved assets by subtracting a fractional tie-breaker:
+
+```text
+asset score - index * 0.1
+```
+
+That produced values such as `89.9`.
+
+The affected database columns are integers:
+
+- `publisher_queue.quality_score`
+- `publisher_queue.predicted_rank_score`
+
+Defined in:
+
+- `database/migrations/0012_create_autonomous_distribution_core.sql`
+
+### Fix
+
+Added:
+
+- `apps/web/lib/scoreSafety.ts`
+
+Helper:
+
+- `toSafeIntegerScore(value)`
+
+Behavior:
+
+- `89.9` -> `90`
+- `"89.9"` -> `90`
+- `"90"` -> `90`
+- invalid strings -> `0`
+- `null` / missing -> `0`
+- clamps score/progress values to `0-100`
+- never throws
+
+Applied to Supabase integer score/progress writes:
+
+- GO Autopilot `publisher_queue.quality_score`
+- GO Autopilot `publisher_queue.predicted_rank_score`
+- Distribution Engine `publisher_queue.quality_score`
+- Distribution Engine `publisher_queue.predicted_rank_score`
+- Project `progress`
+- Research `confidence_score`
+
+### Regression Coverage
+
+Added:
+
+- `scripts/test-integer-score-safety.mjs`
+- `npm run test:integer-score-safety`
+
+The test verifies:
+
+- decimal numbers are rounded
+- decimal strings are rounded
+- invalid strings do not crash
+- integer DB fields are known from migrations
+- GO Autopilot no longer inserts decimal quality/rank scores
+- score/progress/confidence writes use the safety helper
+- Supabase integer-score payloads do not include decimal strings
+
+### Migration Required
+
+No migration required.
+
+This is an application payload safety fix for existing integer columns.
+
+### Checks Verified
+
+Passed:
+
+- `npm run format`
+- `npm run lint`
+- `npm run typecheck`
+- `npm run build`
+- `npm run test:integer-score-safety`
+- `npm run test:go-autopilot`
+- `npm run test:public-tracking-links`
+- `npm run test:dashboard-qc`
+- `npm run test:autopilot`
+- `npm run test:system-runner`
+- `backend/.venv/Scripts/python.exe -m pytest` from `backend/`
+
 ## Current MVP State - CareerScore Webhook Robustness
 
 Status: verified on local checks.

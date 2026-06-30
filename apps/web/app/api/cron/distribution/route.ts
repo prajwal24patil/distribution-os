@@ -7,6 +7,13 @@ import {
   generateQcSummary,
 } from "@/lib/dashboardQcAgent";
 import { publishDuePosts } from "@/lib/publishingWorker";
+import {
+  getSafePublicTrackingUrl,
+  isValidProductionPublicAppUrl,
+  repairLegacyLocalTrackingText,
+  sanitizePostTrackingLinks,
+  sanitizePublicTrackingUrl,
+} from "@/lib/publicUrl";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type {
   CampaignItemInsert,
@@ -56,7 +63,16 @@ function validateRequiredEnv() {
     "NEXT_PUBLIC_APP_URL",
   ];
 
-  return required.filter((key) => !process.env[key]?.trim());
+  const missing = required.filter((key) => !process.env[key]?.trim());
+
+  if (
+    process.env.NEXT_PUBLIC_APP_URL?.trim() &&
+    !isValidProductionPublicAppUrl(process.env.NEXT_PUBLIC_APP_URL)
+  ) {
+    missing.push("NEXT_PUBLIC_APP_URL_INVALID");
+  }
+
+  return missing;
 }
 
 function supabaseFailure(table: string, action: string, message: string) {
@@ -108,6 +124,181 @@ function normalizePlatform(platform: string) {
   if (normalized.includes("blog") || normalized.includes("seo")) return "blog";
 
   return normalized.replace(/[^a-z0-9]+/g, "_") || "organic";
+}
+
+function repairRowValue(value: string | null | undefined) {
+  return repairLegacyLocalTrackingText(value || "");
+}
+
+async function repairCronProjectTrackingLinks(project: ProjectRow) {
+  const supabase = createAdminClient();
+  const [trackingLinks, publisherQueue, scheduledPosts, campaignItems, autopilotRuns, dailyRuns] =
+    await Promise.all([
+      supabase
+        .from("tracking_links")
+        .select("id, tracking_url")
+        .eq("project_id", project.id)
+        .eq("owner_id", project.user_id),
+      supabase
+        .from("publisher_queue")
+        .select(
+          "id, title, content, tracking_url, posted_url, short_video_script, blog_outline, caption, landing_copy, referral_copy",
+        )
+        .eq("project_id", project.id)
+        .eq("owner_id", project.user_id),
+      supabase
+        .from("scheduled_posts")
+        .select("id, title, content, tracking_url, published_url")
+        .eq("project_id", project.id)
+        .eq("owner_id", project.user_id),
+      supabase
+        .from("campaign_items")
+        .select("id, content, utm_link")
+        .eq("project_id", project.id)
+        .eq("owner_id", project.user_id),
+      supabase
+        .from("autopilot_runs")
+        .select("id, work_created")
+        .eq("project_id", project.id)
+        .eq("owner_id", project.user_id),
+      supabase
+        .from("daily_autopilot_runs")
+        .select("id, problem_found, fix_applied, next_step")
+        .eq("project_id", project.id)
+        .eq("owner_id", project.user_id),
+    ]);
+
+  let repaired = 0;
+  const warnings: string[] = [];
+
+  for (const result of [
+    trackingLinks,
+    publisherQueue,
+    scheduledPosts,
+    campaignItems,
+    autopilotRuns,
+    dailyRuns,
+  ]) {
+    if (result.error) warnings.push(result.error.message);
+  }
+
+  const repairRows = async <Row extends { id: string }>(
+    rows: Row[],
+    fields: Array<keyof Row>,
+    update: (
+      id: string,
+      patch: Record<string, string>,
+    ) => PromiseLike<{ error: { message: string } | null }>,
+  ) => {
+    for (const row of rows) {
+      const patch: Record<string, string> = {};
+
+      for (const field of fields) {
+        const before = row[field];
+
+        if (typeof before !== "string") continue;
+
+        const after = repairRowValue(before) as Row[keyof Row];
+
+        if (after !== before) {
+          patch[String(field)] = String(after);
+        }
+      }
+
+      if (Object.keys(patch).length === 0) continue;
+
+      const result = await update(row.id, patch);
+
+      if (result.error) {
+        warnings.push(result.error.message);
+      } else {
+        repaired += 1;
+      }
+    }
+  };
+
+  await repairRows(trackingLinks.data ?? [], ["tracking_url"], (id, patch) =>
+    supabase
+      .from("tracking_links")
+      .update(patch as { tracking_url?: string })
+      .eq("id", id),
+  );
+  await repairRows(
+    publisherQueue.data ?? [],
+    [
+      "title",
+      "content",
+      "tracking_url",
+      "posted_url",
+      "short_video_script",
+      "blog_outline",
+      "caption",
+      "landing_copy",
+      "referral_copy",
+    ],
+    (id, patch) =>
+      supabase
+        .from("publisher_queue")
+        .update(
+          patch as {
+            title?: string;
+            content?: string;
+            tracking_url?: string;
+            posted_url?: string;
+            short_video_script?: string;
+            blog_outline?: string;
+            caption?: string;
+            landing_copy?: string;
+            referral_copy?: string;
+          },
+        )
+        .eq("id", id),
+  );
+  await repairRows(
+    scheduledPosts.data ?? [],
+    ["title", "content", "tracking_url", "published_url"],
+    (id, patch) =>
+      supabase
+        .from("scheduled_posts")
+        .update(
+          patch as {
+            title?: string;
+            content?: string;
+            tracking_url?: string;
+            published_url?: string;
+          },
+        )
+        .eq("id", id),
+  );
+  await repairRows(campaignItems.data ?? [], ["content", "utm_link"], (id, patch) =>
+    supabase
+      .from("campaign_items")
+      .update(patch as { content?: string; utm_link?: string })
+      .eq("id", id),
+  );
+  await repairRows(autopilotRuns.data ?? [], ["work_created"], (id, patch) =>
+    supabase
+      .from("autopilot_runs")
+      .update(patch as { work_created?: string })
+      .eq("id", id),
+  );
+  await repairRows(
+    dailyRuns.data ?? [],
+    ["problem_found", "fix_applied", "next_step"],
+    (id, patch) =>
+      supabase
+        .from("daily_autopilot_runs")
+        .update(
+          patch as {
+            problem_found?: string;
+            fix_applied?: string;
+            next_step?: string;
+          },
+        )
+        .eq("id", id),
+  );
+
+  return { repaired, warnings };
 }
 
 async function getProductUrl(project: ProjectRow) {
@@ -217,7 +408,7 @@ async function runDistributionCycleForProject(project: ProjectRow) {
       utm_medium: item.utm_medium,
       utm_campaign: item.utm_campaign,
       utm_content: item.utm_content,
-      tracking_url: `/t/${trackingId}`,
+      tracking_url: getSafePublicTrackingUrl(trackingId),
     };
   });
   const { error: trackingError } = await supabase.from("tracking_links").insert(trackingRows);
@@ -233,8 +424,8 @@ async function runDistributionCycleForProject(project: ProjectRow) {
     platform: asset.platform,
     content_type: asset.assetType,
     title: asset.title,
-    content: asset.content,
-    tracking_url: trackingRows[index]?.tracking_url || "",
+    content: sanitizePostTrackingLinks(asset.content),
+    tracking_url: sanitizePublicTrackingUrl(trackingRows[index]?.tracking_url || ""),
     status: "ready_for_approval",
     asset_type: asset.assetType,
     format: asset.format,
@@ -319,8 +510,8 @@ async function scheduleProjectAssets(project: ProjectRow) {
         platform,
         content_type: item.content_type,
         title: item.title,
-        content: item.content,
-        tracking_url: item.tracking_url,
+        content: sanitizePostTrackingLinks(item.content),
+        tracking_url: sanitizePublicTrackingUrl(item.tracking_url),
         scheduled_for: scheduledFor,
         timezone: "Asia/Kolkata",
         status: isBlogPlatform(platform, item.content_type) ? "scheduled" : "manual_required",
@@ -449,11 +640,13 @@ export async function POST(request: Request) {
       scheduled: 0,
       published: 0,
       manual_required: 0,
+      links_repaired: 0,
       errors: [] as CronErrorDetail[],
     };
 
     for (const project of (projects ?? []) as ProjectRow[]) {
       try {
+        const repair = await repairCronProjectTrackingLinks(project);
         const cycle = await runDistributionCycleForProject(project);
         const qc = await runDashboardQcForProject(project);
         const scheduled = await scheduleProjectAssets(project);
@@ -465,9 +658,14 @@ export async function POST(request: Request) {
         summary.assets_created += cycle.assetsCreated;
         summary.scheduled += scheduled.scheduled;
         summary.manual_required += scheduled.manualRequired;
+        summary.links_repaired += repair.repaired;
 
         if (qc.status === "fail") {
           summary.errors.push({ project_id: project.id, message: "Dashboard QC failed." });
+        }
+
+        for (const warning of repair.warnings) {
+          summary.errors.push({ project_id: project.id, message: warning });
         }
 
         void metrics;

@@ -7,6 +7,7 @@ import type {
   ProjectRow,
   ResearchRunInsert,
 } from "@/lib/supabase/types";
+import { toSafeIntegerScore } from "@/lib/scoreSafety";
 
 type ResearchInput = {
   project: ProjectRow;
@@ -128,7 +129,7 @@ export function buildResearchRun({ project, memory, ownerId }: ResearchInput): R
       "Research is generated from saved project and product memory only.",
       "No external market data, RAG, OpenAI, or third-party APIs were used.",
     ]),
-    confidence_score: confidenceScore,
+    confidence_score: toSafeIntegerScore(confidenceScore),
   };
 }
 

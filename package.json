@@ -26,6 +26,7 @@
     "test:platform-connections": "node scripts/test-platform-connections.mjs",
     "test:public-tracking-links": "node scripts/test-public-tracking-links.mjs",
     "test:go-autopilot": "node scripts/test-go-autopilot.mjs",
+    "test:integer-score-safety": "node scripts/test-integer-score-safety.mjs",
     "test:daily-content-factory": "node scripts/test-daily-content-factory.mjs",
     "test:safe-publishing-queue": "node scripts/test-safe-publishing-queue.mjs",
     "test:publisher-connections": "node scripts/test-publisher-connections.mjs",
