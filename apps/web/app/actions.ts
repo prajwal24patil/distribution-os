@@ -12,6 +12,7 @@ import {
 import { runDistributionCycle } from "@/lib/autonomousDistributionEngine";
 import { createDailyGrowthPlan } from "@/lib/dailyAutopilot";
 import { runDailyAutopilotForProject } from "@/lib/dailyAutopilotRunner";
+import { runGoAutopilot } from "@/lib/goAutopilot";
 import { buildGrowthActions, buildResearchRun, buildViralCampaignItems } from "@/lib/growthEngine";
 import { applySafeFixes, detectGrowthProblems } from "@/lib/growthProblemSolver";
 import { markPostPublished, scheduleApprovedAssets } from "@/lib/publishingScheduler";
@@ -1644,6 +1645,36 @@ export async function startDistributionEngine(formData: FormData) {
   revalidatePath(pathname);
   revalidatePath(`/projects/${projectId}/campaigns`);
   redirect(`${pathname}?success=distribution`);
+}
+
+export async function goAutopilotAction(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const projectId = getString(formData, "project_id");
+  const pathname = `/projects/${projectId}/autopilot`;
+
+  if (!projectId) {
+    redirectWithError("/projects", "Project is required.");
+  }
+
+  try {
+    await preparePublicTrackingLinks(projectId, user.id, pathname);
+    await runGoAutopilot(projectId);
+  } catch (error) {
+    redirectWithError(pathname, error instanceof Error ? error.message : "GO Autopilot failed.");
+  }
+
+  revalidatePath(pathname);
+  revalidatePath(`/projects/${projectId}/campaigns`);
+  revalidatePath(`/projects/${projectId}/social-share`);
+  redirect(`${pathname}?success=go-autopilot`);
 }
 
 export async function approvePublisherQueueItem(formData: FormData) {

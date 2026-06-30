@@ -39,6 +39,7 @@ export type BasicPublisherMetrics = {
 };
 
 export type PublisherAdapter = {
+  name: string;
   platform: PublisherPlatform;
   validateConnection: (connected?: boolean) => PublisherAdapterResponse;
   prepareContent: (post: PreparedPost, connected?: boolean) => PublisherAdapterResponse;
@@ -85,7 +86,7 @@ function response(
 
 function connectionStatus(platform: PublisherPlatform, connected?: boolean) {
   if (platform === "blog") {
-    return response(platform, "published", "Blog publishing is handled internally.");
+    return response(platform, "scheduled", "Blog publishing is handled internally.");
   }
 
   return connected
@@ -97,8 +98,9 @@ function connectionStatus(platform: PublisherPlatform, connected?: boolean) {
     : response(platform, "manual_approval_required", "Official account connection is required.");
 }
 
-function manualAdapter(platform: PublisherPlatform): PublisherAdapter {
+function connectionReadyStubAdapter(platform: PublisherPlatform, name: string): PublisherAdapter {
   return {
+    name,
     platform,
     validateConnection: (connected) => connectionStatus(platform, connected),
     prepareContent: (_post, connected) => connectionStatus(platform, connected),
@@ -111,18 +113,63 @@ function manualAdapter(platform: PublisherPlatform): PublisherAdapter {
   };
 }
 
+export const BlogPublisherAdapter: PublisherAdapter = connectionReadyStubAdapter(
+  "blog",
+  "BlogPublisherAdapter",
+);
+export const LinkedInPublisherAdapter: PublisherAdapter = connectionReadyStubAdapter(
+  "linkedin",
+  "LinkedInPublisherAdapter",
+);
+export const XPublisherAdapter: PublisherAdapter = connectionReadyStubAdapter(
+  "x",
+  "XPublisherAdapter",
+);
+export const GoogleBusinessProfilePublisherAdapter: PublisherAdapter = connectionReadyStubAdapter(
+  "google_business_profile",
+  "GoogleBusinessProfilePublisherAdapter",
+);
+export const RedditPublisherAdapter: PublisherAdapter = connectionReadyStubAdapter(
+  "reddit",
+  "RedditPublisherAdapter",
+);
+export const FacebookPagePublisherAdapter: PublisherAdapter = connectionReadyStubAdapter(
+  "facebook_page",
+  "FacebookPagePublisherAdapter",
+);
+export const InstagramBusinessPublisherAdapter: PublisherAdapter = connectionReadyStubAdapter(
+  "instagram_business",
+  "InstagramBusinessPublisherAdapter",
+);
+export const YouTubePublisherAdapter: PublisherAdapter = connectionReadyStubAdapter(
+  "youtube",
+  "YouTubePublisherAdapter",
+);
+export const QuoraManualPublisherAdapter: PublisherAdapter = connectionReadyStubAdapter(
+  "quora_manual",
+  "QuoraManualPublisherAdapter",
+);
+export const WhatsAppManualPublisherAdapter: PublisherAdapter = connectionReadyStubAdapter(
+  "whatsapp_manual",
+  "WhatsAppManualPublisherAdapter",
+);
+export const EmailManualPublisherAdapter: PublisherAdapter = connectionReadyStubAdapter(
+  "email_manual",
+  "EmailManualPublisherAdapter",
+);
+
 export const publisherAdapters: PublisherAdapter[] = [
-  manualAdapter("linkedin"),
-  manualAdapter("x"),
-  manualAdapter("google_business_profile"),
-  manualAdapter("reddit"),
-  manualAdapter("facebook_page"),
-  manualAdapter("instagram_business"),
-  manualAdapter("youtube"),
-  manualAdapter("quora_manual"),
-  manualAdapter("whatsapp_manual"),
-  manualAdapter("email_manual"),
-  manualAdapter("blog"),
+  LinkedInPublisherAdapter,
+  XPublisherAdapter,
+  GoogleBusinessProfilePublisherAdapter,
+  RedditPublisherAdapter,
+  FacebookPagePublisherAdapter,
+  InstagramBusinessPublisherAdapter,
+  YouTubePublisherAdapter,
+  QuoraManualPublisherAdapter,
+  WhatsAppManualPublisherAdapter,
+  EmailManualPublisherAdapter,
+  BlogPublisherAdapter,
 ];
 
 export function getPublisherNotice() {

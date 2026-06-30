@@ -37,6 +37,19 @@ for (const adapter of [
   ok(adapters.includes(adapter), `exports ${adapter}`);
 }
 
+for (const adapter of [
+  "BlogPublisherAdapter",
+  "LinkedInPublisherAdapter",
+  "XPublisherAdapter",
+  "GoogleBusinessProfilePublisherAdapter",
+  "RedditPublisherAdapter",
+  "FacebookPagePublisherAdapter",
+  "InstagramBusinessPublisherAdapter",
+  "YouTubePublisherAdapter",
+]) {
+  ok(legacyAdapters.includes(adapter), `server publisher adapter exists: ${adapter}`);
+}
+
 for (const method of [
   "validateConnection",
   "validateAsset",
@@ -71,6 +84,16 @@ ok(
   adapters.includes("Official adapter stub; not publishing yet."),
   "non-blog stubs do not pretend to publish",
 );
+ok(
+  legacyAdapters.includes("official_integration_not_implemented"),
+  "connection-ready stubs refuse to fake published status",
+);
+ok(
+  legacyAdapters.includes("manual_approval_required"),
+  "not connected platform adapters return manual required",
+);
+ok(!legacyAdapters.includes("access_token"), "legacy adapters do not expose access tokens");
+ok(!legacyAdapters.includes("refresh_token"), "legacy adapters do not expose refresh tokens");
 ok(
   adapters.includes("Scheduled blog post required."),
   "blog publish requires scheduled post context",

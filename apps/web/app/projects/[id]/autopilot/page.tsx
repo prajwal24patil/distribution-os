@@ -1,11 +1,7 @@
 import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import {
-  markScheduledPostPosted,
-  runFullSystemTestAction,
-  startDistributionEngine,
-} from "@/app/actions";
+import { goAutopilotAction, markScheduledPostPosted, runFullSystemTestAction } from "@/app/actions";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { loadAutopilotPageData } from "@/lib/autopilotData";
@@ -350,14 +346,15 @@ export default async function AutopilotPage({ params, searchParams }: AutopilotP
               DistributionOS for CareerScore
             </h2>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-neutral-700">
-              Run one growth cycle, copy the prepared posts, publish manually, and add the result so
-              DistributionOS can learn.
+              GO Autopilot runs one safe Autopilot cycle: create assets, QC them, schedule the
+              approved work, publish eligible blog posts, and keep social work manual until official
+              accounts are connected.
             </p>
           </div>
-          <form action={startDistributionEngine}>
+          <form action={goAutopilotAction}>
             <input name="project_id" type="hidden" value={project.id} />
             <SubmitButton
-              idleLabel="Run Autopilot"
+              idleLabel="GO Autopilot"
               pendingLabel="Working..."
               className="h-11 rounded bg-neutral-950 px-5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-neutral-500"
             />
@@ -373,7 +370,11 @@ export default async function AutopilotPage({ params, searchParams }: AutopilotP
 
       {success ? (
         <div className="rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          {success === "system-test" ? "Full system test completed." : "Autopilot updated."}
+          {success === "system-test"
+            ? "Full system test completed."
+            : success === "go-autopilot"
+              ? "GO Autopilot completed."
+              : "Autopilot updated."}
         </div>
       ) : null}
 
@@ -403,6 +404,29 @@ export default async function AutopilotPage({ params, searchParams }: AutopilotP
           <Metric label="CareerScore events" value={data.results.eventsReceived} />
           <Metric label="Blog published" value={data.results.blogPublishedCount} />
         </div>
+        {data.distributionCycle ? (
+          <div className="mt-5 rounded border border-neutral-200 bg-neutral-50 p-4">
+            <p className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+              GO Summary
+            </p>
+            <div className="mt-4 grid gap-4 md:grid-cols-4">
+              <Metric label="Assets created" value={data.distributionCycle.content_created_count} />
+              <Metric label="Approved" value={data.distributionCycle.content_approved_count} />
+              <Metric label="Blocked" value={data.distributionCycle.content_rejected_count} />
+              <Metric label="Manual shares" value={data.distributionCycle.queued_count} />
+              <Metric label="Scheduled" value={data.scheduledPosts.length} />
+              <Metric label="Blog published" value={data.distributionCycle.published_count} />
+              <Metric
+                label="Warnings"
+                value={cleanCareerScoreText(data.distributionCycle.learning_summary)}
+              />
+              <Metric
+                label="Next action"
+                value={cleanCareerScoreText(data.distributionCycle.next_cycle_plan)}
+              />
+            </div>
+          </div>
+        ) : null}
         <p className="mt-4 text-sm leading-6 text-neutral-700">
           Blog publishing is auto-publish ready. LinkedIn, X, Reddit, Google, Instagram, WhatsApp,
           Quora, and YouTube remain manual-required until official accounts are connected.

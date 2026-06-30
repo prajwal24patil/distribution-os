@@ -35,6 +35,271 @@ Current known facts:
 - Primary goal: build a maintainable AI-assisted distribution platform
 - Current phase: 24/7 Daily Autopilot MVP for CareerScore with optimized loading, local QA checks, full tracking URLs, approve/copy/manual posting, and manual result capture
 
+## Current MVP State - GO Autopilot
+
+Status: verified on local checks.
+
+Added one-click GO Autopilot for CareerScore without adding new tables, fake engagement, scraping, auto-DMs, fake trending, or unsafe external posting.
+
+### User Flow
+
+The Autopilot page primary button is now:
+
+- `GO Autopilot`
+
+When clicked, DistributionOS:
+
+1. repairs legacy local/LAN tracking links for the project
+2. requires production public URL safety before generation
+3. creates a full daily CareerScore content batch
+4. attaches public tracking links
+5. runs Spam/Risk Guard and the existing QA agent
+6. queues only approved assets
+7. schedules approved work through the existing Schedule Optimizer
+8. publishes due internal blog posts through the existing blog publisher
+9. keeps social, community, email, and manual channels `manual_required` unless official connections exist
+10. writes a GO Summary into the latest distribution cycle
+
+### Daily Content Factory
+
+Added:
+
+- `apps/web/lib/dailyContentFactory.ts`
+
+The factory creates:
+
+- 3 LinkedIn posts
+- 5 X posts
+- 1 X thread
+- 1 SEO blog
+- 2 Reddit helpful drafts
+- 2 Quora answer drafts
+- 2 WhatsApp messages
+- 2 Instagram captions
+- 2 YouTube Shorts scripts
+- 1 Google Business post draft
+- 1 email draft
+- 1 referral post
+
+Angles:
+
+- no callback
+- resume not shortlisted
+- fresher gap
+- data analyst roadmap
+- MNC readiness
+- salary growth
+- AI-proof career
+- before applying again
+
+### Short Video Script Agent
+
+The factory includes a deterministic short video script agent with:
+
+- hook
+- 20-30 second script
+- scene outline
+- voiceover
+- caption
+- hashtags
+- CTA
+- tracking link
+
+### Safety
+
+Spam/Risk Guard blocks:
+
+- fake guarantees
+- fake proof
+- repeated/spammy instructions
+- missing tracking links
+- overpromising job placement
+- auto-DM/scraping language
+
+Only QA-approved assets enter the publisher queue.
+
+### Publishing Behavior
+
+Blog:
+
+- `auto_publish_ready`
+- published internally only when due and eligible
+
+Social/community/manual channels:
+
+- `manual_required` unless official account connection exists
+- copy/post manually from Scheduled Work
+- no fake posting or unofficial automation
+
+### GO Summary
+
+The Autopilot page now shows a compact GO Summary from the latest distribution cycle:
+
+- assets created
+- approved
+- blocked
+- manual shares
+- scheduled
+- blog published
+- warnings
+- next action
+
+### Regression Coverage
+
+Added:
+
+- `scripts/test-go-autopilot.mjs`
+- `scripts/test-daily-content-factory.mjs`
+- `scripts/test-safe-publishing-queue.mjs`
+
+Added npm scripts:
+
+- `npm run test:go-autopilot`
+- `npm run test:daily-content-factory`
+- `npm run test:safe-publishing-queue`
+
+### Migration Required
+
+No migration required.
+
+GO Autopilot uses existing tables:
+
+- `campaigns`
+- `campaign_items`
+- `tracking_links`
+- `publisher_queue`
+- `scheduled_posts`
+- `distribution_cycles`
+
+### Checks Verified
+
+Passed:
+
+- `npm run format`
+- `npm run lint`
+- `npm run typecheck`
+- `npm run build`
+- `npm run test:go-autopilot`
+- `npm run test:daily-content-factory`
+- `npm run test:safe-publishing-queue`
+- `npm run test:dashboard-qc`
+- `npm run test:autopilot`
+- `npm run test:blog-auto-publish`
+- `backend/.venv/Scripts/python.exe -m pytest` from `backend/`
+
+## Current MVP State - Official Platform Connection Foundation
+
+Status: verified on local checks.
+
+Added the official social connection setup foundation for future API/OAuth auto-posting without adding fake publishing, browser bots, token exposure, or unsafe external posting.
+
+### Settings Platform Connections
+
+Updated:
+
+- `apps/web/app/projects/[id]/settings/page.tsx`
+
+Settings now includes a dedicated `Platform Connections` section for:
+
+- LinkedIn
+- X
+- Google Business Profile
+- Reddit
+- YouTube
+- Instagram Business
+- Facebook Page
+
+The page displays supported connection states:
+
+- `not_connected`
+- `connected`
+- `expired`
+- `permission_missing`
+- `manual_required`
+- `rate_limited`
+- `disabled`
+
+Founder-facing states:
+
+- `Auto-publish ready` for internal blog publishing
+- `Manual-required` for unconnected or not-yet-implemented social platforms
+- `Reconnect required` for expired or permission-missing accounts
+- copy/manual instructions for safe manual posting
+
+No access tokens or refresh tokens are rendered.
+
+### Publisher Adapters
+
+Updated:
+
+- `apps/web/lib/publisherAdapters.ts`
+- `apps/web/lib/platformPublisherAdapters.ts`
+
+Server-side adapter foundation now includes named adapters:
+
+- `BlogPublisherAdapter`
+- `LinkedInPublisherAdapter`
+- `XPublisherAdapter`
+- `GoogleBusinessProfilePublisherAdapter`
+- `RedditPublisherAdapter`
+- `YouTubePublisherAdapter`
+- `InstagramBusinessPublisherAdapter`
+- `FacebookPagePublisherAdapter`
+
+Blog publishing remains the only real auto-publish path through the existing internal blog publisher.
+
+Social platform adapters are connection-ready stubs:
+
+- return manual-required when not connected
+- return integration-not-implemented when connected but adapter is not complete
+- never pretend a social post was published
+- never expose tokens
+- never log secrets
+
+### Manual Behavior Preserved
+
+Current stable mode remains:
+
+- autonomous asset creation
+- QA
+- scheduling
+- tracking links
+- internal blog auto-publishing
+- manual-required social/community publishing
+
+No social OAuth flow was implemented yet.
+
+### Regression Coverage
+
+Added/updated:
+
+- `scripts/test-platform-connections.mjs`
+- `scripts/test-platform-publisher-adapters.mjs`
+
+Added npm script:
+
+- `npm run test:platform-connections`
+
+### Migration Required
+
+No migration required.
+
+The existing `publishing_connections` table and typed connection statuses already support this foundation.
+
+### Checks Verified
+
+Passed:
+
+- `npm run format`
+- `npm run lint`
+- `npm run typecheck`
+- `npm run build`
+- `npm run test:platform-connections`
+- `npm run test:platform-publisher-adapters`
+- `npm run test:dashboard-qc`
+- `npm run test:autopilot`
+- `backend/.venv/Scripts/python.exe -m pytest` from `backend/`
+
 ## Current MVP State - CareerScore Webhook Robustness
 
 Status: verified on local checks.

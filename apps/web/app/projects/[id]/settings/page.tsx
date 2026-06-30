@@ -7,6 +7,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { requireUser } from "@/lib/auth";
 import { listPublishingConnections } from "@/lib/publisherConnections";
 import { getPublicAppUrl } from "@/lib/publicUrl";
+import type { PublishingConnectionStatus } from "@/lib/supabase/types";
 
 type SettingsPageProps = {
   params: Promise<{
@@ -27,11 +28,69 @@ const advancedLinks = [
   { label: "Social Share Center", path: "social-share" },
 ];
 
+const officialConnectionPlatforms = [
+  "linkedin",
+  "x",
+  "google_business_profile",
+  "reddit",
+  "youtube",
+  "instagram_business",
+  "facebook_page",
+];
+
 function platformLabel(platform: string) {
   if (platform === "blog") return "Blog publishing";
   if (platform === "x") return "X";
   if (platform === "google_business_profile") return "Google Business Profile";
   return platform.replace(/_/g, " ");
+}
+
+function connectionUiState({
+  platform,
+  status,
+}: {
+  platform: string;
+  status: PublishingConnectionStatus;
+}) {
+  if (platform === "blog") {
+    return {
+      label: "Auto-publish ready",
+      helper: "Internal blog publishing is available now.",
+      className: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    };
+  }
+
+  if (status === "connected") {
+    return {
+      label: "Manual-required",
+      helper:
+        "OAuth foundation is ready, but auto-posting stays disabled until the official adapter is implemented.",
+      className: "border-blue-200 bg-blue-50 text-blue-800",
+    };
+  }
+
+  if (status === "expired" || status === "permission_missing") {
+    return {
+      label: "Reconnect required",
+      helper:
+        "Reconnect the official account and confirm publishing permissions before enabling auto-posting.",
+      className: "border-amber-200 bg-amber-50 text-amber-800",
+    };
+  }
+
+  if (status === "rate_limited" || status === "disabled") {
+    return {
+      label: status === "rate_limited" ? "Rate limited" : "Disabled",
+      helper: "Keep using copy/manual publishing until the platform is healthy again.",
+      className: "border-red-200 bg-red-50 text-red-800",
+    };
+  }
+
+  return {
+    label: "Manual-required",
+    helper: "Copy the prepared asset and publish manually until the official account is connected.",
+    className: "border-neutral-200 bg-neutral-50 text-neutral-700",
+  };
 }
 
 export default async function ProjectSettingsPage({ params, searchParams }: SettingsPageProps) {
@@ -53,6 +112,10 @@ export default async function ProjectSettingsPage({ params, searchParams }: Sett
   }
 
   const connections = await listPublishingConnections(project.id);
+  const officialConnections = connections.filter((connection) =>
+    officialConnectionPlatforms.includes(connection.platform),
+  );
+  const blogConnection = connections.find((connection) => connection.platform === "blog");
   const { data: memory } = await supabase
     .from("product_memory")
     .select("website_url, product_url")
@@ -119,34 +182,73 @@ export default async function ProjectSettingsPage({ params, searchParams }: Sett
             </p>
           </div>
         </div>
+      </section>
+
+      <section className="rounded border border-neutral-300 bg-white p-5">
+        <div className="flex flex-col gap-2 border-b border-neutral-200 pb-4">
+          <p className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+            Platform Connections
+          </p>
+          <h3 className="text-xl font-semibold text-neutral-950">
+            Official API/OAuth setup foundation
+          </h3>
+          <p className="text-sm leading-6 text-neutral-700">
+            Social platforms stay manual-required until official accounts, permissions, and
+            production adapters are connected. No browser bots or fake published states are used.
+          </p>
+        </div>
+
+        {blogConnection ? (
+          <div className="mt-5 rounded border border-emerald-200 bg-emerald-50 p-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-emerald-950">BlogPublisherAdapter</p>
+                <p className="mt-1 text-sm text-emerald-800">
+                  Auto-publish ready through the existing internal DistributionOS blog publisher.
+                </p>
+              </div>
+              <span className="w-fit rounded border border-emerald-300 px-3 py-1 text-sm font-semibold text-emerald-800">
+                Auto-publish ready
+              </span>
+            </div>
+          </div>
+        ) : null}
 
         <div className="mt-5 grid gap-3">
-          {connections.map((connection) => (
-            <div
-              key={connection.platform}
-              className="flex flex-col gap-3 rounded border border-neutral-200 p-4 md:flex-row md:items-center md:justify-between"
-            >
-              <div>
-                <p className="text-sm font-semibold capitalize text-neutral-950">
-                  {platformLabel(connection.platform)}
-                </p>
-                <p className="mt-1 text-sm text-neutral-700">{connection.explanation}</p>
-                {connection.platform !== "blog" ? (
-                  <p className="mt-1 text-sm text-neutral-700">
-                    Setup required before auto-publishing.
-                  </p>
-                ) : null}
-                <p className="mt-1 text-xs leading-5 text-neutral-500">{connection.setup_steps}</p>
-              </div>
-              <button
-                className="h-9 w-fit rounded border border-neutral-300 px-3 text-sm font-semibold text-neutral-500"
-                disabled
-                type="button"
+          {officialConnections.map((connection) => {
+            const ui = connectionUiState({
+              platform: connection.platform,
+              status: connection.connection_status,
+            });
+
+            return (
+              <div
+                key={connection.platform}
+                className="flex flex-col gap-3 rounded border border-neutral-200 p-4 md:flex-row md:items-center md:justify-between"
               >
-                {connection.platform === "blog" ? "Auto-publish ready" : "Connect soon"}
-              </button>
-            </div>
-          ))}
+                <div>
+                  <p className="text-sm font-semibold capitalize text-neutral-950">
+                    {platformLabel(connection.platform)}
+                  </p>
+                  <p className="mt-1 text-sm text-neutral-700">
+                    Status: {connection.connection_status}
+                  </p>
+                  <p className="mt-1 text-sm text-neutral-700">{ui.helper}</p>
+                  <p className="mt-1 text-xs leading-5 text-neutral-500">
+                    {connection.setup_steps}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 md:items-end">
+                  <span
+                    className={`w-fit rounded border px-3 py-1 text-sm font-semibold ${ui.className}`}
+                  >
+                    {ui.label}
+                  </span>
+                  <p className="text-xs text-neutral-500">Copy/manual instructions available.</p>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </section>
 
