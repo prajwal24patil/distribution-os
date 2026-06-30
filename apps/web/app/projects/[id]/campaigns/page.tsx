@@ -7,7 +7,7 @@ import { SubmitButton } from "@/components/ui/SubmitButton";
 import { requireUser } from "@/lib/auth";
 import { sanitizeCareerScoreCopy } from "@/lib/careerScoreCopy";
 import { formatDate } from "@/lib/projects";
-import { getPublicAppUrl, toPublicUrl } from "@/lib/publicUrl";
+import { getPublicAppUrl, sanitizePostTrackingLinks, toPublicUrl } from "@/lib/publicUrl";
 import type {
   CampaignItemRow,
   CampaignItemStatus,
@@ -212,7 +212,7 @@ function CampaignItemCard({ item, origin }: { item: CampaignItemWithResults; ori
   const trackingLink = item.tracking_links?.[0] ?? null;
   const trackingUrl = trackingLink ? toPublicUrl(trackingLink.tracking_url, origin) : "";
   const hook = sanitizeCareerScoreCopy(item.hook);
-  const content = sanitizeCareerScoreCopy(item.content);
+  const content = sanitizePostTrackingLinks(sanitizeCareerScoreCopy(item.content));
   const cta = sanitizeCareerScoreCopy(item.cta);
   const copyValue = [
     hook,

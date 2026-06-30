@@ -7,7 +7,7 @@ import {
   generateXTrendAngles,
 } from "@/lib/careerScoreRevenueEngine";
 import { createSocialPublishQueueItem, decideSocialDeployment } from "@/lib/socialDeploymentEngine";
-import { getPublicAppUrl, toPublicUrl } from "@/lib/publicUrl";
+import { getPublicAppUrl, sanitizePostTrackingLinks, toPublicUrl } from "@/lib/publicUrl";
 import { requireUser } from "@/lib/auth";
 import type { PublishingConnectionRow, TrackingLinkRow } from "@/lib/supabase/types";
 
@@ -108,7 +108,8 @@ export default async function SocialShareCenterPage({ params }: SocialShareCente
         </div>
         <div className="divide-y divide-neutral-200">
           {assets.map((asset) => {
-            const copyValue = `${asset.title}\n\n${asset.content}`;
+            const assetContent = sanitizePostTrackingLinks(asset.content);
+            const copyValue = `${asset.title}\n\n${assetContent}`;
             const decision = decideSocialDeployment(asset, connections);
             const queueItem = createSocialPublishQueueItem({
               projectId: project.id,
@@ -145,7 +146,7 @@ export default async function SocialShareCenterPage({ params }: SocialShareCente
                       <p>Scheduled: {queueItem.scheduled_for || "Not scheduled"}</p>
                     </div>
                     <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-neutral-700">
-                      {asset.content || "Add a tracking link by running Autopilot first."}
+                      {assetContent || "Add a tracking link by running Autopilot first."}
                     </p>
                     <p className="mt-3 break-all text-sm text-neutral-600">
                       Tracking link: {trackingUrl}

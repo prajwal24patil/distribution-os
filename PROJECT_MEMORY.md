@@ -35,6 +35,311 @@ Current known facts:
 - Primary goal: build a maintainable AI-assisted distribution platform
 - Current phase: 24/7 Daily Autopilot MVP for CareerScore with optimized loading, local QA checks, full tracking URLs, approve/copy/manual posting, and manual result capture
 
+## Current MVP State - CareerScore Webhook Robustness
+
+Status: verified on local checks.
+
+Fixed the CareerScore webhook endpoint so valid CareerScore events return structured JSON instead of unhandled 500s.
+
+Endpoint:
+
+- `POST /api/events/careerscore`
+
+### Root Cause
+
+The webhook route assumed every valid event had a known `tracking_id`.
+
+This caused valid CareerScore events to fail when:
+
+- `tracking_id` was missing
+- `tracking_id` was unknown
+- the event was valid but unattributed
+- `payment_started` was sent even though the database event type constraint did not allow it
+- Supabase lookups/inserts failed outside a top-level structured error boundary
+
+### Webhook Behavior
+
+Updated:
+
+- `apps/web/app/api/events/careerscore/route.ts`
+- `apps/web/lib/supabase/types.ts`
+- `database/migrations/0019_add_payment_started_conversion_event.sql`
+- `scripts/test-careerscore-webhook.mjs`
+
+Accepted event types:
+
+- `signup`
+- `resume_upload`
+- `free_score_generated`
+- `payment_started`
+- `paid_report`
+- `referral_share`
+
+The route now:
+
+- validates `x-careerscore-secret`
+- validates event type
+- accepts optional/missing `tracking_id`
+- accepts optional/missing `email`
+- accepts revenue for `payment_started` and `paid_report`
+- never crashes when tracking link is missing
+- saves unknown/missing tracking events as unattributed when a CareerScore project exists
+- attributes known tracking links to the matching project, owner, tracking link, and campaign item
+- returns structured JSON for project lookup failures
+- returns structured JSON for conversion event insert failures
+- wraps webhook processing in a top-level safe error handler
+
+Successful response shape:
+
+```json
+{
+  "ok": true,
+  "event_type": "...",
+  "tracked": true,
+  "attributed": true
+}
+```
+
+Safe failure responses use:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "table": "...",
+    "action": "...",
+    "message": "..."
+  }
+}
+```
+
+### Dashboard Counters
+
+Dashboard counters continue to read from `conversion_events`.
+
+Supported production counters:
+
+- CareerScore events
+- signups
+- resume uploads
+- free scores
+- paid reports
+- revenue
+
+`paid_report` with revenue stores the amount in `conversion_events.event_value`, so Autopilot/Results production revenue updates from trusted CareerScore events.
+
+### Migration Required
+
+Yes.
+
+Run:
+
+- `database/migrations/0019_add_payment_started_conversion_event.sql`
+
+This expands `conversion_events.event_type` to include `payment_started`.
+
+### Checks Verified
+
+Passed:
+
+- `npm run format`
+- `npm run lint`
+- `npm run typecheck`
+- `npm run build`
+- `npm run test:careerscore-webhook`
+- `npm run test:dashboard-qc`
+- `npm run test:autopilot`
+- `npm run test:system-runner`
+- `backend/.venv/Scripts/python.exe -m pytest` from `backend/`
+
+Reverified on 2026-06-30 for the repeated CareerScore webhook 500-fix request with the same command set passing.
+
+### Production Test Commands
+
+Missing secret should fail:
+
+```bash
+curl -X POST https://distribution-os-web.vercel.app/api/events/careerscore \
+  -H "Content-Type: application/json" \
+  -d "{\"event_type\":\"signup\"}"
+```
+
+Valid unattributed paid report should succeed:
+
+```bash
+curl -X POST https://distribution-os-web.vercel.app/api/events/careerscore \
+  -H "Content-Type: application/json" \
+  -H "x-careerscore-secret: careerscore_webhook_2026_secure_test" \
+  -d "{\"event_type\":\"paid_report\",\"email\":\"test@example.com\",\"revenue\":99,\"metadata\":{\"source\":\"careerscore\",\"plan\":\"basic\",\"score\":583}}"
+```
+
+Unknown tracking ID should not crash:
+
+```bash
+curl -X POST https://distribution-os-web.vercel.app/api/events/careerscore \
+  -H "Content-Type: application/json" \
+  -H "x-careerscore-secret: careerscore_webhook_2026_secure_test" \
+  -d "{\"event_type\":\"signup\",\"tracking_id\":\"unknown-test-tracking-id\",\"metadata\":{\"source\":\"careerscore\"}}"
+```
+
+## Current MVP State - Production Tracking Link Hardening
+
+Status: verified on local checks.
+
+Fixed production tracking-link leakage where production scheduled/manual work could display LAN/local links such as `http://192.168.1.9:3000/t/...`.
+
+### Root Cause
+
+The shared public URL resolver used request origin as a fallback when `NEXT_PUBLIC_APP_URL` was not available.
+
+In production, that allowed Vercel/proxy/request-origin values from local or LAN testing to be carried into visible post content and tracking links.
+
+### Public URL Resolver
+
+Updated:
+
+- `apps/web/lib/publicUrl.ts`
+
+Production behavior:
+
+- always uses `NEXT_PUBLIC_APP_URL`
+- never falls back to request origin
+- never generates public production links from `localhost`, `0.0.0.0`, `127.0.0.1`, or `192.168.x.x`
+- blocks new public post generation if `NEXT_PUBLIC_APP_URL` is missing
+
+Local development behavior:
+
+- local URLs are still allowed for local display/testing
+- localhost fallback remains available only in development
+
+### Tracking Link Sanitizers
+
+Added/updated helpers:
+
+- `sanitizePublicTrackingUrl`
+- `sanitizePublicTrackingUrlWithWarning`
+- `sanitizePostTrackingLinks`
+- `hasLocalTrackingUrl`
+- `repairLegacyLocalTrackingText`
+- `requirePublicAppUrlForGeneration`
+
+Behavior:
+
+- replaces local/LAN tracking-link bases with `NEXT_PUBLIC_APP_URL` in production
+- preserves `/t/{tracking_id}`
+- preserves query params
+- does not alter normal non-tracking text
+- returns a warning/empty URL when production generation is impossible because `NEXT_PUBLIC_APP_URL` is missing
+
+### Legacy Saved Data Repair
+
+Added:
+
+- `apps/web/lib/trackingLinkRepair.ts`
+- `repairLegacyLocalTrackingLinks(projectId, ownerId)`
+
+The repair function updates existing rows for the current project/owner and replaces old local/LAN URL bases with the configured public app URL or `https://distribution-os-web.vercel.app`.
+
+Covered saved fields include:
+
+- `tracking_links.tracking_url`
+- `publisher_queue` text/link fields
+- `scheduled_posts` text/link fields
+- `campaign_items.content`
+- `campaign_items.utm_link`
+- `autopilot_runs.work_created`
+- `daily_autopilot_runs` summary fields
+
+It does not delete records, change tracking IDs, alter metrics, or change demo/test separation.
+
+### Creation and Rendering Safety
+
+Public link repair now runs before new public growth work is generated from:
+
+- Viral Campaign generation
+- Start Growth Autopilot
+- Run Today Autopilot
+- Distribution Engine / Run Autopilot
+
+Sanitizers are applied on:
+
+- scheduled work cards
+- campaign cards
+- Social Share Center assets
+- CareerScore revenue assets
+- publisher queue creation
+- scheduled post creation
+- internal blog publishing
+- public publication pages
+
+Autopilot now shows:
+
+> Local tracking links detected. Run link repair before posting.
+
+when visible production scheduled/social work still contains a local/LAN URL.
+
+### Regression Coverage
+
+Added:
+
+- `scripts/test-public-tracking-links.mjs`
+- `npm run test:public-tracking-links`
+
+The test verifies:
+
+- production links use `NEXT_PUBLIC_APP_URL`
+- localhost links are replaced
+- `192.168.x.x` links are replaced
+- tracking IDs are preserved
+- query params are preserved
+- post content links are sanitized
+- scheduled work output has no local URLs
+- social share output has no local URLs
+- blog CTA/content has no local URLs
+- local development can still use localhost
+- production generation is blocked if `NEXT_PUBLIC_APP_URL` is missing
+
+### Migration Required
+
+No migration required.
+
+This is application-level URL resolving, sanitization, and safe repair logic over existing tables.
+
+### Checks Verified
+
+Passed:
+
+- `npm run format`
+- `npm run lint`
+- `npm run typecheck`
+- `npm run build`
+- `backend/.venv/Scripts/python.exe -m pytest` from `backend/`
+- `npm run test:public-tracking-links`
+- `npm run test:agent-supervisor`
+- `npm run test:revenue-engine-resilience`
+- `npm run test:social-deployment-engine`
+- `npm run test:platform-publisher-adapters`
+- `npm run test:dashboard-qc`
+- `npm run test:autopilot`
+- `npm run test:blog-auto-publish`
+- `npm run test:system-runner`
+
+### Production Verification
+
+After deploy:
+
+1. Confirm Vercel has `NEXT_PUBLIC_APP_URL=https://distribution-os-web.vercel.app`.
+2. Open `/projects/[id]/autopilot`.
+3. Run Autopilot once to repair old saved links before posting.
+4. Confirm visible Scheduled Work, Social Share Center, campaigns, blog/publications, and copied post text use `https://distribution-os-web.vercel.app/t/...`.
+5. Confirm no visible production post contains `localhost`, `0.0.0.0`, `127.0.0.1`, or `192.168.x.x`.
+
+Production cron command:
+
+```bash
+curl -X POST https://distribution-os-web.vercel.app/api/cron/distribution -H "Authorization: Bearer $CRON_SECRET"
+```
+
 ## Current MVP State - Self-Healing CareerScore Revenue Engine
 
 Status: verified on local checks.

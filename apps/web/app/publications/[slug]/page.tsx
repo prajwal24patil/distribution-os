@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { headers } from "next/headers";
 import { extractPostIdFromPublicationSlug } from "@/lib/blogPublisher";
 import { sanitizeCareerScoreCopy, sanitizeCareerScoreTitle } from "@/lib/careerScoreCopy";
-import { getPublicAppUrl, toPublicUrl } from "@/lib/publicUrl";
+import { getPublicAppUrl, sanitizePostTrackingLinks, toPublicUrl } from "@/lib/publicUrl";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { ScheduledPostRow } from "@/lib/supabase/types";
 
@@ -59,8 +59,11 @@ export default async function PublicationPage({ params }: PublicationPageProps) 
 
   const trackingUrl = toPublicUrl(post.tracking_url, origin);
   const articleContent = post.tracking_url
-    ? sanitizeCareerScoreCopy(post.content).replaceAll(post.tracking_url, trackingUrl)
-    : sanitizeCareerScoreCopy(post.content);
+    ? sanitizePostTrackingLinks(sanitizeCareerScoreCopy(post.content)).replaceAll(
+        post.tracking_url,
+        trackingUrl,
+      )
+    : sanitizePostTrackingLinks(sanitizeCareerScoreCopy(post.content));
   const articleTitle = sanitizeCareerScoreTitle(
     post.title,
     `${post.platform} ${post.content_type}`,

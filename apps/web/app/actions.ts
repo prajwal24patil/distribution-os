@@ -16,7 +16,9 @@ import { buildGrowthActions, buildResearchRun, buildViralCampaignItems } from "@
 import { applySafeFixes, detectGrowthProblems } from "@/lib/growthProblemSolver";
 import { markPostPublished, scheduleApprovedAssets } from "@/lib/publishingScheduler";
 import { publishDuePosts } from "@/lib/publishingWorker";
+import { requirePublicAppUrlForGeneration } from "@/lib/publicUrl";
 import { createClient } from "@/lib/supabase/server";
+import { repairLegacyLocalTrackingLinks } from "@/lib/trackingLinkRepair";
 import { runFullSystemTest } from "@/lib/systemTestRunner";
 import type {
   CampaignItemStatus,
@@ -170,6 +172,18 @@ function campaignItemScore(item: SolverCampaignItem) {
 
 function readyWorkText(readyWork: string[]) {
   return readyWork.map((work, index) => `${index + 1}. ${work}`).join("\n\n");
+}
+
+async function preparePublicTrackingLinks(projectId: string, ownerId: string, pathname: string) {
+  try {
+    requirePublicAppUrlForGeneration();
+    await repairLegacyLocalTrackingLinks(projectId, ownerId);
+  } catch (error) {
+    redirectWithError(
+      pathname,
+      error instanceof Error ? error.message : "Public tracking URL setup is required.",
+    );
+  }
 }
 
 export async function login(formData: FormData) {
@@ -727,6 +741,8 @@ export async function generateViralCampaign(formData: FormData) {
     redirectWithError(pathname, "Project not found.");
   }
 
+  await preparePublicTrackingLinks(projectId, user.id, pathname);
+
   const { data: memory, error: memoryError } = await supabase
     .from("product_memory")
     .select("*")
@@ -1129,6 +1145,8 @@ export async function startGrowthAutopilotAction(formData: FormData) {
     redirectWithError(pathname, "Project not found.");
   }
 
+  await preparePublicTrackingLinks(projectId, user.id, pathname);
+
   const { data: existingMemory, error: memoryLoadError } = await supabase
     .from("product_memory")
     .select("*")
@@ -1397,6 +1415,8 @@ export async function runTodayAutopilot(formData: FormData) {
     redirectWithError(pathname, memoryError?.message || "Product URL setup is required first.");
   }
 
+  await preparePublicTrackingLinks(projectId, user.id, pathname);
+
   const { count: researchCount } = await supabase
     .from("research_runs")
     .select("id", { count: "exact", head: true })
@@ -1609,6 +1629,8 @@ export async function startDistributionEngine(formData: FormData) {
   }
 
   try {
+    requirePublicAppUrlForGeneration();
+    await repairLegacyLocalTrackingLinks(projectId, user.id);
     await runDistributionCycle(projectId);
     await scheduleApprovedAssets(projectId);
     await publishDuePosts(10, { projectId, ownerId: user.id });

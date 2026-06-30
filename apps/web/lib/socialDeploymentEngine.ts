@@ -1,5 +1,6 @@
 import { isBlogPlatform } from "@/lib/blogPublisher";
 import { runRevenueAssetQc, type RevenueAsset } from "@/lib/careerScoreRevenueEngine";
+import { sanitizePublicTrackingUrl } from "@/lib/publicUrl";
 import type { PublishingConnectionPlatform, PublishingConnectionRow } from "@/lib/supabase/types";
 
 export type PublishDecisionStatus =
@@ -193,7 +194,7 @@ export function createSocialPublishQueueItem({
     last_attempt_at: "",
     published_at: "",
     published_url: "",
-    tracking_link: asset.tracking_link,
+    tracking_link: sanitizePublicTrackingUrl(asset.tracking_link),
     error_code: decision.warning ? decision.publish_decision : "",
     safe_error_message: decision.warning,
     requires_manual_action: decision.publish_decision !== "auto_publish_ready",

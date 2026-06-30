@@ -16,7 +16,13 @@ import {
 } from "@/lib/careerScoreRevenueEngine";
 import { buildAgentHealthDashboard, runMasterAgentSupervisor } from "@/lib/agentSupervisor";
 import { sanitizeCareerScoreCopy, sanitizeCareerScoreTitle } from "@/lib/careerScoreCopy";
-import { getPublicAppUrl, toPublicUrl } from "@/lib/publicUrl";
+import {
+  getPublicAppUrl,
+  hasLocalTrackingUrl,
+  isProductionRuntime,
+  sanitizePostTrackingLinks,
+  toPublicUrl,
+} from "@/lib/publicUrl";
 import { isBlogPlatform } from "@/lib/blogPublisher";
 import type { DashboardQcResult } from "@/lib/dashboardQcAgent";
 import type { PublisherQueueRow, ScheduledPostRow, SystemTestRunRow } from "@/lib/supabase/types";
@@ -143,7 +149,7 @@ function cleanScheduledTitle(post: ScheduledPostRow) {
 }
 
 function contentWithTrackingLink(content: string, trackingUrl: string) {
-  const cleaned = cleanCareerScoreText(content);
+  const cleaned = sanitizePostTrackingLinks(cleanCareerScoreText(content));
 
   if (!trackingUrl) {
     return cleaned.replace(
@@ -301,6 +307,11 @@ export default async function AutopilotPage({ params, searchParams }: AutopilotP
 
   const project = data.project;
   const scheduledPosts = uniqueScheduledPosts(data.scheduledPosts, data.readyItems);
+  const hasUnsafeVisibleTrackingUrl =
+    isProductionRuntime() &&
+    [...data.scheduledPosts, ...data.readyItems].some((item) =>
+      hasLocalTrackingUrl(`${item.title} ${item.content} ${item.tracking_url}`),
+    );
   const nextMove =
     data.distributionCycle?.next_cycle_plan ||
     data.dailyRun?.next_step ||
@@ -363,6 +374,12 @@ export default async function AutopilotPage({ params, searchParams }: AutopilotP
       {success ? (
         <div className="rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
           {success === "system-test" ? "Full system test completed." : "Autopilot updated."}
+        </div>
+      ) : null}
+
+      {hasUnsafeVisibleTrackingUrl ? (
+        <div className="rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Local tracking links detected. Run link repair before posting.
         </div>
       ) : null}
 

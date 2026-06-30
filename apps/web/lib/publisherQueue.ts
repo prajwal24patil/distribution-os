@@ -3,6 +3,7 @@ import type {
   PublisherQueueInsert,
   PublisherQueueRow,
 } from "@/lib/supabase/types";
+import { sanitizePostTrackingLinks, sanitizePublicTrackingUrl } from "@/lib/publicUrl";
 
 export type QueueSourceItem = CampaignItemRow & {
   tracking_links?: Array<{ tracking_url: string }>;
@@ -27,8 +28,8 @@ export function createPublisherQueueItems(items: QueueSourceItem[]): PublisherQu
     platform: item.channel,
     content_type: contentTypeForChannel(item.channel),
     title: item.hook,
-    content: item.content,
-    tracking_url: item.tracking_links?.[0]?.tracking_url || "",
+    content: sanitizePostTrackingLinks(item.content),
+    tracking_url: sanitizePublicTrackingUrl(item.tracking_links?.[0]?.tracking_url || ""),
     status: "ready_for_approval",
   }));
 }

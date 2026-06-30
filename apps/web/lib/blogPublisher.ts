@@ -1,6 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sanitizeCareerScoreCopy, sanitizeCareerScoreTitle } from "@/lib/careerScoreCopy";
-import { toPublicUrl } from "@/lib/publicUrl";
+import { sanitizePostTrackingLinks, toPublicUrl } from "@/lib/publicUrl";
 import type { ScheduledPostRow } from "@/lib/supabase/types";
 
 function slugify(value: string) {
@@ -37,7 +37,7 @@ export async function publishInternalBlogPost(post: ScheduledPostRow) {
   const supabase = createAdminClient();
   const publishedUrl = publicationUrl(post);
   const cleanTitle = sanitizeCareerScoreTitle(post.title, `${post.platform} ${post.content_type}`);
-  const cleanContent = sanitizeCareerScoreCopy(post.content);
+  const cleanContent = sanitizePostTrackingLinks(sanitizeCareerScoreCopy(post.content));
 
   const { error: postError } = await supabase
     .from("scheduled_posts")

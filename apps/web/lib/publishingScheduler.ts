@@ -1,5 +1,6 @@
 import { chooseBestPostingTime, learnBestPostingTimeFromResults } from "@/lib/platformTimingAgent";
 import { getPublisherAdapter } from "@/lib/publisherAdapters";
+import { sanitizePostTrackingLinks, sanitizePublicTrackingUrl } from "@/lib/publicUrl";
 import { createClient } from "@/lib/supabase/server";
 import type {
   ConversionEventRow,
@@ -135,8 +136,8 @@ export async function scheduleOneAsset({
     platform,
     content_type: item.content_type,
     title: item.title,
-    content: item.content,
-    tracking_url: item.tracking_url,
+    content: sanitizePostTrackingLinks(item.content),
+    tracking_url: sanitizePublicTrackingUrl(item.tracking_url),
     scheduled_for: scheduledFor.toISOString(),
     timezone: "Asia/Kolkata",
     status: manualRequired ? "manual_required" : "scheduled",

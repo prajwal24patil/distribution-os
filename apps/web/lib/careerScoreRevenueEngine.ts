@@ -7,6 +7,7 @@ import type {
   ScheduledPostRow,
   TrackingLinkRow,
 } from "@/lib/supabase/types";
+import { sanitizePostTrackingLinks, sanitizePublicTrackingUrl } from "@/lib/publicUrl";
 
 export type RevenueAssetType =
   | "linkedin_founder_post"
@@ -218,6 +219,8 @@ export function createPainBasedCampaignAssets({
   trackingLink: string;
   connections?: PublishingConnectionRow[];
 }) {
+  const safeTrackingLink = sanitizePublicTrackingUrl(trackingLink);
+
   return assetTemplates.map((template, index): RevenueAsset => {
     const audience =
       careerScoreRevenueBrain.audiences[index % careerScoreRevenueBrain.audiences.length];
@@ -233,9 +236,9 @@ export function createPainBasedCampaignAssets({
       `Pain: ${pain}`,
       `Offer: ${offer}`,
       `CTA: ${cta}`,
-      `Link: ${trackingLink}`,
+      `Link: ${safeTrackingLink}`,
     ].join("\n");
-    const qc = runRevenueAssetQc({ content, cta, tracking_link: trackingLink });
+    const qc = runRevenueAssetQc({ content, cta, tracking_link: safeTrackingLink });
 
     return {
       ...template,
@@ -244,8 +247,8 @@ export function createPainBasedCampaignAssets({
       hook,
       offer,
       cta,
-      content,
-      tracking_link: trackingLink,
+      content: sanitizePostTrackingLinks(content),
+      tracking_link: safeTrackingLink,
       status: hasOfficialConnection(template.platform, connections)
         ? "auto_publish_ready"
         : "manual_required",
@@ -256,6 +259,8 @@ export function createPainBasedCampaignAssets({
 }
 
 export function generateXTrendAngles(trackingLink: string) {
+  const safeTrackingLink = sanitizePublicTrackingUrl(trackingLink);
+
   return [
     "fresher jobs",
     "layoffs",
@@ -271,28 +276,32 @@ export function generateXTrendAngles(trackingLink: string) {
     topic,
     angle: `Use ${topic} to explain why job seekers should check readiness before applying again.`,
     hashtags: ["#CareerScore", "#JobSearch", `#${topic.replace(/\s+/g, "")}`],
-    x_post: `Many candidates follow ${topic} conversations, but the useful next step is checking their own readiness gaps. ${trackingLink}`,
+    x_post: `Many candidates follow ${topic} conversations, but the useful next step is checking their own readiness gaps. ${safeTrackingLink}`,
     safety_note: "No fake engagement, no spam replies, no promise to trend.",
   }));
 }
 
 export function generateLinkedInGrowthAssets(trackingLink: string) {
+  const safeTrackingLink = sanitizePublicTrackingUrl(trackingLink);
+
   return {
-    founder_story_post: `I built CareerScore for candidates applying repeatedly without knowing the gap. Start here: ${trackingLink}`,
-    pain_based_post: `Not getting shortlisted is painful. CareerScore helps identify readiness gaps before the next application. ${trackingLink}`,
+    founder_story_post: `I built CareerScore for candidates applying repeatedly without knowing the gap. Start here: ${safeTrackingLink}`,
+    pain_based_post: `Not getting shortlisted is painful. CareerScore helps identify readiness gaps before the next application. ${safeTrackingLink}`,
     poll_idea:
       "What blocks job callbacks most: resume proof, skills, role clarity, or interview readiness?",
     carousel_script:
       "Slide 1: No callbacks? Slide 2: Check proof. Slide 3: Check skills. Slide 4: Check role fit. Slide 5: Check CareerScore.",
-    comment_reply_draft: `Useful point. The safest next step is to diagnose the gap before applying again: ${trackingLink}`,
+    comment_reply_draft: `Useful point. The safest next step is to diagnose the gap before applying again: ${safeTrackingLink}`,
     connection_note_draft: "I share practical notes on career readiness and shortlisting gaps.",
     proof_post: "Proof post should use real metrics only. Status: needs data.",
   };
 }
 
 export function generateGoogleSeoGrowthAssets(trackingLink: string) {
+  const safeTrackingLink = sanitizePublicTrackingUrl(trackingLink);
+
   return {
-    google_business_profile_post: `Applying but not getting callbacks? Check your CareerScore before applying again. ${trackingLink}`,
+    google_business_profile_post: `Applying but not getting callbacks? Check your CareerScore before applying again. ${safeTrackingLink}`,
     seo_blog_topic: "Why freshers do not get shortlisted after applying to many jobs",
     seo_title: "Before applying to 100 jobs, check your CareerScore",
     meta_description:
@@ -302,25 +311,29 @@ export function generateGoogleSeoGrowthAssets(trackingLink: string) {
       "How can I check career readiness?",
       "What should freshers improve before applying again?",
     ],
-    cta: `Check your CareerScore: ${trackingLink}`,
+    cta: `Check your CareerScore: ${safeTrackingLink}`,
   };
 }
 
 export function generateShareableReportOutline(trackingLink: string) {
+  const safeTrackingLink = sanitizePublicTrackingUrl(trackingLink);
+
   return {
     title: "CareerScore readiness snapshot",
     insight_summary: "Summarize real CareerScore readiness patterns when enough data exists.",
     anonymous_aggregate_stat_placeholder: "needs real data",
     common_mistakes: ["unclear role target", "missing project proof", "weak skills positioning"],
-    cta: `Check your CareerScore: ${trackingLink}`,
+    cta: `Check your CareerScore: ${safeTrackingLink}`,
     suggested_platforms: ["LinkedIn", "WhatsApp", "Instagram", "Blog"],
   };
 }
 
 export function generateMediaShortsAsset(trackingLink: string) {
+  const safeTrackingLink = sanitizePublicTrackingUrl(trackingLink);
+
   return {
     title: "Why freshers are not getting shortlisted",
-    caption: `Before applying again, check your CareerScore: ${trackingLink}`,
+    caption: `Before applying again, check your CareerScore: ${safeTrackingLink}`,
     hashtags: ["#CareerScore", "#Freshers", "#JobSearch"],
     scene_by_scene_outline: [
       "0-5s: Candidate applying repeatedly with no callback.",
@@ -330,8 +343,8 @@ export function generateMediaShortsAsset(trackingLink: string) {
     ],
     voiceover_text:
       "If you are applying again and again but not getting shortlisted, check your readiness gap before the next application.",
-    cta: `Before applying to another 50 jobs, check your CareerScore: ${trackingLink}`,
-    tracking_link: trackingLink,
+    cta: `Before applying to another 50 jobs, check your CareerScore: ${safeTrackingLink}`,
+    tracking_link: safeTrackingLink,
     copyright_policy:
       "Do not use copyrighted media. Create original visuals or manual upload task.",
   };
@@ -348,12 +361,14 @@ export function buildProofBlocks(events: ConversionEventRow[] = []) {
 }
 
 export function generateReferralShareAsset(trackingLink: string) {
+  const safeTrackingLink = sanitizePublicTrackingUrl(trackingLink);
+
   return {
     referral_campaign: "Share CareerScore with friends who are applying but stuck.",
-    share_message: `Know someone applying to jobs but not getting callbacks? Send them CareerScore: ${trackingLink}`,
+    share_message: `Know someone applying to jobs but not getting callbacks? Send them CareerScore: ${safeTrackingLink}`,
     referral_cta: "Share your CareerScore with 3 friends and unlock a bonus roadmap section.",
     unlock_idea: "Bonus roadmap section after verified referrals.",
-    tracking_link: trackingLink,
+    tracking_link: safeTrackingLink,
   };
 }
 

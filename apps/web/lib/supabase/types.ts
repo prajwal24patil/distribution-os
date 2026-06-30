@@ -692,6 +692,7 @@ export type ConversionEventType =
   | "signup"
   | "resume_upload"
   | "free_score_generated"
+  | "payment_started"
   | "paid_report"
   | "referral_share"
   | "revenue";
