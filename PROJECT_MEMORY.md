@@ -324,6 +324,17 @@ Passed:
 - `npm run test:blog-auto-publish`
 - `npm run test:system-runner`
 
+Reverified on 2026-06-30 for the repeated production tracking-link hardening request with:
+
+- `npm run format`
+- `npm run lint`
+- `npm run typecheck`
+- `npm run build`
+- `npm run test:public-tracking-links`
+- `npm run test:dashboard-qc`
+- `npm run test:autopilot`
+- `backend/.venv/Scripts/python.exe -m pytest` from `backend/`
+
 ### Production Verification
 
 After deploy:
