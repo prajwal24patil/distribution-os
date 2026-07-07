@@ -143,7 +143,13 @@ export async function publishXPost(
   }
 
   if (!response.ok) {
-    return { status: "retry_scheduled", reason: "X API publish failed.", publishedUrl: "" };
+    const responseBody = await response.text();
+
+    return {
+      status: "retry_scheduled",
+      reason: `X API publish failed (${response.status}): ${responseBody.slice(0, 500)}`,
+      publishedUrl: "",
+    };
   }
 
   const payload = (await response.json()) as { data?: { id?: string } };

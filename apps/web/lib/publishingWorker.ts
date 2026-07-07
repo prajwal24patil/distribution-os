@@ -182,7 +182,7 @@ export async function publishSinglePost(post: ScheduledPostRow) {
 
 export async function publishDuePosts(
   limit = 10,
-  filters: { projectId?: string; ownerId?: string } = {},
+  filters: { projectId?: string; ownerId?: string; platform?: PublishingConnectionPlatform } = {},
 ) {
   const supabase = createAdminClient();
   let query = supabase
@@ -206,6 +206,10 @@ export async function publishDuePosts(
     query = query.eq("owner_id", filters.ownerId);
   }
 
+  if (filters.platform) {
+    query = query.eq("platform", filters.platform);
+  }
+
   const { data, error } = await query.limit(limit);
 
   if (error) {
@@ -215,7 +219,8 @@ export async function publishDuePosts(
   const results = [];
 
   for (const post of (data ?? []) as ScheduledPostRow[]) {
-    results.push(await publishSinglePost(post));
+    const result = await publishSinglePost(post);
+    results.push({ ...result, platform: normalizePlatform(post.platform), postId: post.id });
   }
 
   return results;

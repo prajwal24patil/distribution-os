@@ -93,6 +93,7 @@ export type GoAutopilotSummary = {
   approved: number;
   blocked: number;
   scheduled: number;
+  publishedCount: number;
   blogPublished: number;
   manualShares: number;
   warnings: string[];
@@ -221,6 +222,20 @@ export async function runGoAutopilot(projectId: string): Promise<GoAutopilotSumm
     .eq("project_id", projectId)
     .eq("owner_id", user.id);
   const connections = (connectionData ?? []) as PublishingConnectionRow[];
+  const xConnected = connections.some(
+    (connection) => connection.platform === "x" && connection.connection_status === "connected",
+  );
+  const xAssetsFound = approved.filter((asset) => asset.platform.toLowerCase() === "x").length;
+
+  console.info({
+    stage: "go_autopilot_x_publish",
+    x_connected: xConnected,
+    x_assets_found_count: xAssetsFound,
+    x_publish_attempted: false,
+    x_publish_result_status: "not_attempted",
+    failure_reason: xConnected ? "" : "X OAuth is not connected.",
+  });
+
   const queueRows: PublisherQueueInsert[] = approved.map((asset, index) => {
     const campaignItem = insertedItems[guarded.indexOf(asset)];
     const platform = queuePlatform(asset.platform);
@@ -259,8 +274,27 @@ export async function runGoAutopilot(projectId: string): Promise<GoAutopilotSumm
   }
 
   const scheduled = await scheduleApprovedAssets(projectId);
-  const publishResults = await publishDuePosts(20, { projectId, ownerId: user.id });
-  const blogPublished = publishResults.filter((result) => result.status === "published").length;
+  const xPublishResults = xConnected
+    ? await publishDuePosts(5, { projectId, ownerId: user.id, platform: "x" })
+    : [];
+  const generalPublishResults = await publishDuePosts(20, { projectId, ownerId: user.id });
+  const publishResults = [...xPublishResults, ...generalPublishResults];
+  const xResult = xPublishResults[0];
+  const blogPublished = publishResults.filter(
+    (result) => result.status === "published" && result.platform === "blog",
+  ).length;
+  const publishedCount = publishResults.filter((result) => result.status === "published").length;
+
+  console.info({
+    stage: "go_autopilot_x_publish",
+    x_connected: xConnected,
+    x_assets_found_count: xAssetsFound,
+    x_publish_attempted: xConnected && xAssetsFound > 0,
+    x_publish_result_status: xResult?.status ?? "not_attempted",
+    failure_reason:
+      xResult && xResult.status !== "published" ? xResult.reason : xResult ? "" : "No due X post.",
+  });
+
   const manualShares =
     scheduled.manualRequired +
     publishResults.filter((result) => result.status === "manual_required").length;
@@ -275,6 +309,7 @@ export async function runGoAutopilot(projectId: string): Promise<GoAutopilotSumm
     approved: approved.length,
     blocked: blocked.length,
     scheduled: scheduled.created,
+    publishedCount,
     blogPublished,
     manualShares,
     warnings,
@@ -294,7 +329,7 @@ export async function runGoAutopilot(projectId: string): Promise<GoAutopilotSumm
     content_created_count: summary.assetsCreated,
     content_approved_count: summary.approved,
     content_rejected_count: summary.blocked,
-    published_count: summary.blogPublished,
+    published_count: summary.publishedCount,
     queued_count: queueRows.length,
     learning_summary:
       summary.warnings.length > 0

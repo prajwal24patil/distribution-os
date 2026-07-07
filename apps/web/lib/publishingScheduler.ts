@@ -89,7 +89,12 @@ export async function scheduleOneAsset({
   }
 
   const platform = normalizePlatform(item.platform);
-  const scheduledFor = chooseBestPostingTime({ platform, events, failedPosts });
+  const connection = connections.find((row) => row.platform === platform);
+  const officialReady = hasOfficialPublishing({ platform, connection, memory });
+  const scheduledFor =
+    platform === "x" && officialReady
+      ? new Date(Date.now() - 1000)
+      : chooseBestPostingTime({ platform, events, failedPosts });
   const dailyCount = existingPosts.filter((post) =>
     sameDay(new Date(post.scheduled_for), scheduledFor),
   ).length;
@@ -127,8 +132,6 @@ export async function scheduleOneAsset({
     return null;
   }
 
-  const connection = connections.find((row) => row.platform === platform);
-  const officialReady = hasOfficialPublishing({ platform, connection, memory });
   const adapter = getPublisherAdapter(platform);
   const adapterStatus = adapter?.validateConnection(officialReady);
   const needsManualReview = item.qa_status && item.qa_status !== "approved";
