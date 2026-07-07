@@ -53,9 +53,20 @@ ok(oauth.includes("handleXOAuthCallback"), "X OAuth callback helper exists");
 ok(oauth.includes("projectId"), "X OAuth start accepts projectId");
 ok(oauth.includes("customerId"), "X OAuth state preserves customer context");
 ok(oauth.includes("workspaceId"), "X OAuth state preserves workspace context");
-ok(oauth.includes("connected: \"x\""), "X OAuth callback redirects with connected=x");
+ok(oauth.includes('connected: "x"'), "X OAuth callback redirects with connected=x");
 ok(oauth.includes("X_CLIENT_SECRET"), "X OAuth validates X_CLIENT_SECRET");
 ok(oauth.includes("X_REDIRECT_URI"), "X OAuth validates X_REDIRECT_URI");
+ok(oauth.includes("https://api.x.com/2/oauth2/token"), "X OAuth uses api.x.com token endpoint");
+ok(oauth.includes("x_oauth_state"), "X OAuth stores state cookie");
+ok(oauth.includes("x_oauth_project_id"), "X OAuth stores project cookie");
+ok(oauth.includes("stateMatches"), "X OAuth validates stored state");
+ok(oauth.includes("useBasicAuth: true"), "X OAuth first tries confidential Basic auth");
+ok(oauth.includes("useBasicAuth: false"), "X OAuth retries without Basic auth");
+ok(oauth.includes("client_secret"), "X OAuth retry can send client_secret in form body");
+ok(oauth.includes("logSafeTokenExchangeFailure"), "X OAuth logs safe token diagnostics");
+ok(oauth.includes("invalid_client"), "X OAuth detects invalid_client");
+ok(oauth.includes("redirect_uri_mismatch"), "X OAuth detects redirect URI mismatch");
+ok(oauth.includes("DistributionOS CareerScore"), "X OAuth explains likely wrong app client secret");
 ok(oauth.includes("code_challenge"), "X OAuth uses PKCE");
 ok(oauth.includes("x_oauth_code_verifier"), "X OAuth verifier is stored in httpOnly cookie");
 ok(oauth.includes("encryptPlatformToken"), "X OAuth encrypts tokens before save");
@@ -84,6 +95,8 @@ ok(oauth.includes("manual_required"), "non-X OAuth placeholders stay manual requ
 ok(debugRoute.includes("access_token_encrypted"), "debug route checks token presence");
 ok(!debugRoute.includes("refresh_token_encrypted"), "debug route does not expose refresh tokens");
 ok(debugRoute.includes("token_connected: Boolean"), "debug route returns token boolean only");
+ok(debugRoute.includes("latest_token_expiry_exists"), "debug route shows token expiry presence");
+ok(debugRoute.includes("auto_publish_ready"), "debug route shows X auto-publish readiness");
 
 if (process.exitCode) {
   process.exit(process.exitCode);

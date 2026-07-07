@@ -77,6 +77,130 @@ function codeChallenge(verifier: string) {
   return crypto.createHash("sha256").update(verifier).digest("base64url");
 }
 
+function cookieValue(request: Request, name: string) {
+  return request.headers
+    .get("cookie")
+    ?.split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${name}=`))
+    ?.split("=")[1];
+}
+
+function xOAuthEnv() {
+  const clientId = process.env.X_CLIENT_ID?.trim();
+  const clientSecret = process.env.X_CLIENT_SECRET?.trim();
+  const redirectUri = process.env.X_REDIRECT_URI?.trim();
+  const missingEnv = [
+    ["X_CLIENT_ID", clientId],
+    ["X_CLIENT_SECRET", clientSecret],
+    ["X_REDIRECT_URI", redirectUri],
+    ["PLATFORM_TOKEN_ENCRYPTION_KEY", process.env.PLATFORM_TOKEN_ENCRYPTION_KEY?.trim()],
+  ]
+    .filter(([, value]) => !value)
+    .map(([key]) => key);
+
+  return {
+    clientId,
+    clientSecret,
+    redirectUri,
+    missingEnv,
+  };
+}
+
+function tokenFailureReason(status: number, responseBody: string) {
+  const body = responseBody.toLowerCase();
+
+  if (body.includes("invalid_client")) return "invalid_client";
+  if (body.includes("redirect") && body.includes("uri")) return "redirect_uri_mismatch";
+  if (body.includes("invalid_grant")) return "invalid_grant";
+  if (body.includes("code_verifier")) return "pkce_verifier_mismatch";
+
+  return `http_${status}`;
+}
+
+function possibleTokenFailureCause(reason: string) {
+  if (reason === "invalid_client") {
+    return "X_CLIENT_ID/X_CLIENT_SECRET likely belong to a different X app or secret was regenerated. Use the same app: DistributionOS CareerScore.";
+  }
+
+  if (reason === "redirect_uri_mismatch") {
+    return "X_REDIRECT_URI does not exactly match the callback URL saved in the X Developer app.";
+  }
+
+  if (reason === "pkce_verifier_mismatch" || reason === "invalid_grant") {
+    return "OAuth code was reused, expired, or PKCE verifier/state cookies did not match.";
+  }
+
+  return "Wrong X app client id/secret OR redirect uri mismatch OR app auth settings not saved.";
+}
+
+async function exchangeXToken({
+  code,
+  codeVerifier,
+  clientId,
+  clientSecret,
+  redirectUri,
+  useBasicAuth,
+}: {
+  code: string;
+  codeVerifier: string;
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+  useBasicAuth: boolean;
+}) {
+  const body = new URLSearchParams({
+    grant_type: "authorization_code",
+    code,
+    redirect_uri: redirectUri,
+    code_verifier: codeVerifier,
+    client_id: clientId,
+  });
+  const headers: Record<string, string> = {
+    "Content-Type": "application/x-www-form-urlencoded",
+  };
+
+  if (useBasicAuth) {
+    headers.Authorization = `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`;
+  } else {
+    body.set("client_secret", clientSecret);
+  }
+
+  return fetch("https://api.x.com/2/oauth2/token", {
+    method: "POST",
+    headers,
+    body,
+  });
+}
+
+function logSafeTokenExchangeFailure(input: {
+  status: number;
+  responseBody: string;
+  redirectUri: string;
+  hasCode: boolean;
+  hasState: boolean;
+  stateMatches: boolean;
+  hasCodeVerifier: boolean;
+  hasClientId: boolean;
+  hasClientSecret: boolean;
+  reason: string;
+}) {
+  console.error("[oauth:x:token_exchange_failed]", {
+    token_endpoint_status: input.status,
+    token_endpoint_response_body: input.responseBody,
+    redirect_uri_used: input.redirectUri,
+    has_code: input.hasCode,
+    has_state: input.hasState,
+    state_matches: input.stateMatches,
+    has_code_verifier: input.hasCodeVerifier,
+    has_client_id: input.hasClientId,
+    has_client_secret: input.hasClientSecret,
+    app_callback_url_expected: process.env.X_REDIRECT_URI || "",
+    reason: input.reason,
+    possible_cause: possibleTokenFailureCause(input.reason),
+  });
+}
+
 export async function startXOAuth(request: Request) {
   const supabase = await createClient();
   const {
@@ -96,17 +220,7 @@ export async function startXOAuth(request: Request) {
     return NextResponse.json({ error: "projectId is required." }, { status: 400 });
   }
 
-  const clientId = process.env.X_CLIENT_ID?.trim();
-  const clientSecret = process.env.X_CLIENT_SECRET?.trim();
-  const redirectUri = process.env.X_REDIRECT_URI?.trim();
-  const missingEnv = [
-    ["X_CLIENT_ID", clientId],
-    ["X_CLIENT_SECRET", clientSecret],
-    ["X_REDIRECT_URI", redirectUri],
-    ["PLATFORM_TOKEN_ENCRYPTION_KEY", process.env.PLATFORM_TOKEN_ENCRYPTION_KEY?.trim()],
-  ]
-    .filter(([, value]) => !value)
-    .map(([key]) => key);
+  const { clientId, redirectUri, missingEnv } = xOAuthEnv();
 
   if (missingEnv.length > 0) {
     return settingsRedirect(projectId, {
@@ -160,6 +274,20 @@ export async function startXOAuth(request: Request) {
     maxAge: 10 * 60,
     path: "/",
   });
+  response.cookies.set("x_oauth_state", state, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: 10 * 60,
+    path: "/",
+  });
+  response.cookies.set("x_oauth_project_id", projectId, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: 10 * 60,
+    path: "/",
+  });
 
   return response;
 }
@@ -172,12 +300,9 @@ export async function handleXOAuthCallback(request: Request) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code") || "";
   const stateParam = url.searchParams.get("state") || "";
-  const verifier = request.headers
-    .get("cookie")
-    ?.split(";")
-    .map((part) => part.trim())
-    .find((part) => part.startsWith("x_oauth_code_verifier="))
-    ?.split("=")[1];
+  const verifier = cookieValue(request, "x_oauth_code_verifier");
+  const storedState = cookieValue(request, "x_oauth_state");
+  const storedProjectId = cookieValue(request, "x_oauth_project_id");
 
   if (!user) {
     return NextResponse.redirect(`${getPublicAppUrl()}/login`);
@@ -191,7 +316,9 @@ export async function handleXOAuthCallback(request: Request) {
     return NextResponse.json({ error: "Invalid OAuth state." }, { status: 400 });
   }
 
-  if (state.ownerId !== user.id || state.platform !== "x") {
+  const stateMatches = Boolean(storedState && storedState === stateParam);
+
+  if (state.ownerId !== user.id || state.platform !== "x" || !stateMatches) {
     return NextResponse.json(
       { error: "OAuth state does not match the current user." },
       { status: 403 },
@@ -199,7 +326,7 @@ export async function handleXOAuthCallback(request: Request) {
   }
 
   if (!code || !verifier) {
-    return settingsRedirect(state.projectId, {
+    return settingsRedirect(storedProjectId || state.projectId, {
       error: "X OAuth callback is missing code verifier.",
     });
   }
@@ -214,15 +341,7 @@ export async function handleXOAuthCallback(request: Request) {
     });
   }
 
-  const clientId = process.env.X_CLIENT_ID?.trim() || "";
-  const clientSecret = process.env.X_CLIENT_SECRET?.trim() || "";
-  const missingEnv = [
-    ["X_CLIENT_ID", clientId],
-    ["X_CLIENT_SECRET", clientSecret],
-    ["X_REDIRECT_URI", process.env.X_REDIRECT_URI?.trim()],
-  ]
-    .filter(([, value]) => !value)
-    .map(([key]) => key);
+  const { clientId, clientSecret, redirectUri, missingEnv } = xOAuthEnv();
 
   if (missingEnv.length > 0) {
     return settingsRedirect(state.projectId, {
@@ -230,29 +349,74 @@ export async function handleXOAuthCallback(request: Request) {
     });
   }
 
-  const body = new URLSearchParams({
+  const tokenResponse = await exchangeXToken({
     code,
-    grant_type: "authorization_code",
-    client_id: clientId,
-    redirect_uri: oauthRedirectUri("x"),
-    code_verifier: codeVerifier,
-  });
-  const headers: Record<string, string> = {
-    "Content-Type": "application/x-www-form-urlencoded",
-  };
-
-  if (clientSecret) {
-    headers.Authorization = `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`;
-  }
-
-  const tokenResponse = await fetch("https://api.twitter.com/2/oauth2/token", {
-    method: "POST",
-    headers,
-    body,
+    codeVerifier,
+    clientId: clientId || "",
+    clientSecret: clientSecret || "",
+    redirectUri: redirectUri || oauthRedirectUri("x"),
+    useBasicAuth: true,
   });
 
   if (!tokenResponse.ok) {
-    return settingsRedirect(state.projectId, { error: "X OAuth token exchange failed." });
+    const firstResponseBody = await tokenResponse.text();
+    const retryResponse = await exchangeXToken({
+      code,
+      codeVerifier,
+      clientId: clientId || "",
+      clientSecret: clientSecret || "",
+      redirectUri: redirectUri || oauthRedirectUri("x"),
+      useBasicAuth: false,
+    });
+
+    if (!retryResponse.ok) {
+      const retryResponseBody = await retryResponse.text();
+      const reason = tokenFailureReason(retryResponse.status, retryResponseBody);
+
+      logSafeTokenExchangeFailure({
+        status: retryResponse.status,
+        responseBody: retryResponseBody || firstResponseBody,
+        redirectUri: redirectUri || oauthRedirectUri("x"),
+        hasCode: Boolean(code),
+        hasState: Boolean(stateParam),
+        stateMatches,
+        hasCodeVerifier: Boolean(codeVerifier),
+        hasClientId: Boolean(clientId),
+        hasClientSecret: Boolean(clientSecret),
+        reason,
+      });
+
+      await supabase.from("publishing_connections").upsert(
+        {
+          project_id: state.projectId,
+          owner_id: user.id,
+          platform: "x",
+          connection_status: "manual_required",
+          last_error: `${reason}: ${possibleTokenFailureCause(reason)}`,
+          last_checked_at: new Date().toISOString(),
+        },
+        { onConflict: "project_id,owner_id,platform" },
+      );
+
+      return settingsRedirect(state.projectId, {
+        error: "X OAuth token exchange failed",
+        reason,
+      });
+    }
+
+    const retryTokenPayload = (await retryResponse.json()) as {
+      access_token?: string;
+      refresh_token?: string;
+      expires_in?: number;
+      scope?: string;
+    };
+
+    return saveXConnection({
+      supabase,
+      userId: user.id,
+      stateProjectId: state.projectId,
+      tokenPayload: retryTokenPayload,
+    });
   }
 
   const tokenPayload = (await tokenResponse.json()) as {
@@ -266,7 +430,35 @@ export async function handleXOAuthCallback(request: Request) {
     return settingsRedirect(state.projectId, { error: "X OAuth did not return an access token." });
   }
 
-  const meResponse = await fetch("https://api.twitter.com/2/users/me", {
+  return saveXConnection({
+    supabase,
+    userId: user.id,
+    stateProjectId: state.projectId,
+    tokenPayload,
+  });
+}
+
+async function saveXConnection({
+  supabase,
+  userId,
+  stateProjectId,
+  tokenPayload,
+}: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  userId: string;
+  stateProjectId: string;
+  tokenPayload: {
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+    scope?: string;
+  };
+}) {
+  if (!tokenPayload.access_token) {
+    return settingsRedirect(stateProjectId, { error: "X OAuth did not return an access token." });
+  }
+
+  const meResponse = await fetch("https://api.x.com/2/users/me", {
     headers: { Authorization: `Bearer ${tokenPayload.access_token}` },
   });
   const me = meResponse.ok
@@ -278,8 +470,8 @@ export async function handleXOAuthCallback(request: Request) {
 
   const { error } = await supabase.from("publishing_connections").upsert(
     {
-      project_id: state.projectId,
-      owner_id: user.id,
+      project_id: stateProjectId,
+      owner_id: userId,
       platform: "x",
       connection_status: "connected",
       account_id: me.data?.id || "",
@@ -300,11 +492,13 @@ export async function handleXOAuthCallback(request: Request) {
   );
 
   if (error) {
-    return settingsRedirect(state.projectId, { error: "X connection could not be saved." });
+    return settingsRedirect(stateProjectId, { error: "X connection could not be saved." });
   }
 
-  const response = settingsRedirect(state.projectId, { connected: "x" });
+  const response = settingsRedirect(stateProjectId, { connected: "x" });
   response.cookies.delete("x_oauth_code_verifier");
+  response.cookies.delete("x_oauth_state");
+  response.cookies.delete("x_oauth_project_id");
   return response;
 }
 

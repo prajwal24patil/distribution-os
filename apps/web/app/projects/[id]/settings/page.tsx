@@ -158,9 +158,9 @@ export default async function ProjectSettingsPage({ params, searchParams }: Sett
   const latestPublisherResult = publisherResult.data?.[0];
   const xEnvConfigured = Boolean(
     process.env.X_CLIENT_ID &&
-      process.env.X_CLIENT_SECRET &&
-      process.env.X_REDIRECT_URI &&
-      process.env.PLATFORM_TOKEN_ENCRYPTION_KEY,
+    process.env.X_CLIENT_SECRET &&
+    process.env.X_REDIRECT_URI &&
+    process.env.PLATFORM_TOKEN_ENCRYPTION_KEY,
   );
   const xTokenConnected = Boolean(xConnection?.token_connected);
 
@@ -294,9 +294,7 @@ export default async function ProjectSettingsPage({ params, searchParams }: Sett
           </div>
           <div className="rounded border border-neutral-200 p-4">
             <p className="text-sm font-semibold text-neutral-950">Manual-required platforms</p>
-            <p className="mt-2 text-sm text-neutral-700">
-              {manualRequiredPlatforms || "none"}
-            </p>
+            <p className="mt-2 text-sm text-neutral-700">{manualRequiredPlatforms || "none"}</p>
           </div>
         </div>
         <Link

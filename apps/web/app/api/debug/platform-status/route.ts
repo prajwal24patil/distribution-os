@@ -25,7 +25,9 @@ export async function GET(request: Request) {
   const [connectionsResult, scheduledResult, autopilotResult] = await Promise.all([
     supabase
       .from("publishing_connections")
-      .select("platform, connection_status, account_name, access_token_encrypted, last_error")
+      .select(
+        "platform, connection_status, account_name, access_token_encrypted, token_expires_at, last_error",
+      )
       .eq("project_id", projectId)
       .eq("owner_id", user.id),
     supabase
@@ -37,7 +39,9 @@ export async function GET(request: Request) {
       .limit(1),
     supabase
       .from("distribution_cycles")
-      .select("status, content_created_count, content_approved_count, content_rejected_count, published_count, queued_count, learning_summary, created_at")
+      .select(
+        "status, content_created_count, content_approved_count, content_rejected_count, published_count, queued_count, learning_summary, created_at",
+      )
       .eq("project_id", projectId)
       .eq("owner_id", user.id)
       .order("created_at", { ascending: false })
@@ -78,6 +82,7 @@ export async function GET(request: Request) {
       status: connection.connection_status,
       account_name: connection.account_name,
       token_connected: Boolean(connection.access_token_encrypted),
+      token_expiry_exists: Boolean(connection.token_expires_at),
     })),
     x: {
       env_configured:
@@ -86,6 +91,10 @@ export async function GET(request: Request) {
         envConfigured("X_REDIRECT_URI") &&
         envConfigured("PLATFORM_TOKEN_ENCRYPTION_KEY"),
       account_connected: Boolean(xConnection?.access_token_encrypted),
+      auto_publish_ready:
+        xConnection?.connection_status === "connected" &&
+        Boolean(xConnection?.access_token_encrypted),
+      latest_token_expiry_exists: Boolean(xConnection?.token_expires_at),
       status: xConnection?.connection_status || "manual_required",
       last_error: xConnection?.last_error || "",
     },
