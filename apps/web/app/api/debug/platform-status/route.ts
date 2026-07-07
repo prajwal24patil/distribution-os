@@ -22,7 +22,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "projectId is required." }, { status: 400 });
   }
 
-  const [connectionsResult, scheduledResult, autopilotResult] = await Promise.all([
+  const [connectionsResult, scheduledResult, xScheduledResult, autopilotResult] = await Promise.all([
     supabase
       .from("publishing_connections")
       .select(
@@ -38,6 +38,14 @@ export async function GET(request: Request) {
       .order("updated_at", { ascending: false })
       .limit(1),
     supabase
+      .from("scheduled_posts")
+      .select("platform, status, published_url, failure_reason, updated_at")
+      .eq("project_id", projectId)
+      .eq("owner_id", user.id)
+      .eq("platform", "x")
+      .order("updated_at", { ascending: false })
+      .limit(1),
+    supabase
       .from("distribution_cycles")
       .select(
         "status, content_created_count, content_approved_count, content_rejected_count, published_count, queued_count, learning_summary, created_at",
@@ -48,13 +56,19 @@ export async function GET(request: Request) {
       .limit(1),
   ]);
 
-  if (connectionsResult.error || scheduledResult.error || autopilotResult.error) {
+  if (
+    connectionsResult.error ||
+    scheduledResult.error ||
+    xScheduledResult.error ||
+    autopilotResult.error
+  ) {
     return NextResponse.json(
       {
         error: "Status lookup failed.",
         details: [
           connectionsResult.error?.message,
           scheduledResult.error?.message,
+          xScheduledResult.error?.message,
           autopilotResult.error?.message,
         ].filter(Boolean),
       },
@@ -64,6 +78,12 @@ export async function GET(request: Request) {
 
   const connections = connectionsResult.data ?? [];
   const xConnection = connections.find((connection) => connection.platform === "x");
+  const latestXResult = xScheduledResult.data?.[0] ?? null;
+  const latestPublisherResult = latestXResult ?? scheduledResult.data?.[0] ?? null;
+  const lastCycle = autopilotResult.data?.[0] ?? null;
+  const xPublishAttempted = Boolean(
+    latestXResult && !["scheduled", "ready", "auto_publish_ready"].includes(latestXResult.status),
+  );
 
   return NextResponse.json({
     ok: true,
@@ -98,7 +118,15 @@ export async function GET(request: Request) {
       status: xConnection?.connection_status || "manual_required",
       last_error: xConnection?.last_error || "",
     },
-    last_publisher_result: scheduledResult.data?.[0] ?? null,
-    last_autopilot_result: autopilotResult.data?.[0] ?? null,
+    last_publisher_result: latestPublisherResult,
+    last_autopilot_result: lastCycle
+      ? {
+          ...lastCycle,
+          x_publish_attempted: xPublishAttempted,
+          x_publish_status: latestXResult?.status || "not_attempted",
+          x_failure_reason: latestXResult?.failure_reason || "",
+          x_published_url: latestXResult?.published_url || "",
+        }
+      : null,
   });
 }

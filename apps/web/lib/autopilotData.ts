@@ -59,6 +59,18 @@ export type AutopilotResultsSummary = {
   demo: ResultTotals;
 };
 
+export type XPublishDiagnostics = {
+  xConnected: boolean;
+  xAutoPublishReady: boolean;
+  xAssetsFound: number;
+  xPublishAttempted: boolean;
+  xPublishStatus: string;
+  xFailureReason: string;
+  xPublishedUrl: string;
+  publishedCount: number;
+  manualRequiredCount: number;
+};
+
 export type AutopilotPageData = {
   project: ProjectRow | null;
   dailyRun: DailyAutopilotRunRow | null;
@@ -71,6 +83,7 @@ export type AutopilotPageData = {
   dashboardQc: DashboardQcResult;
   campaignItems: AutopilotCampaignItem[];
   results: AutopilotResultsSummary;
+  xDiagnostics: XPublishDiagnostics;
   error: string | null;
 };
 
@@ -84,6 +97,40 @@ const PENDING_SCHEDULED_STATUSES = new Set([
   "manual_required",
   "auto_publish_ready",
 ]);
+
+function buildXDiagnostics({
+  connections,
+  xQueueItems,
+  xPost,
+  scheduledPosts,
+  distributionCycle,
+}: {
+  connections: PublishingConnectionRow[];
+  xQueueItems: PublisherQueueRow[];
+  xPost: ScheduledPostRow | null;
+  scheduledPosts: ScheduledPostRow[];
+  distributionCycle: DistributionCycleRow | null;
+}): XPublishDiagnostics {
+  const xConnection = connections.find((connection) => connection.platform === "x");
+  const xConnected = Boolean(xConnection?.access_token_encrypted);
+  const xAutoPublishReady =
+    xConnection?.connection_status === "connected" && Boolean(xConnection?.access_token_encrypted);
+  const xPublishAttempted = Boolean(
+    xPost && !["scheduled", "ready", "auto_publish_ready"].includes(xPost.status),
+  );
+
+  return {
+    xConnected,
+    xAutoPublishReady,
+    xAssetsFound: xQueueItems.length,
+    xPublishAttempted,
+    xPublishStatus: xPost?.status || "not_attempted",
+    xFailureReason: xPost?.failure_reason || "",
+    xPublishedUrl: xPost?.published_url || "",
+    publishedCount: distributionCycle?.published_count ?? 0,
+    manualRequiredCount: scheduledPosts.filter((post) => post.status === "manual_required").length,
+  };
+}
 
 function itemScore(item: AutopilotCampaignItem) {
   const results = (item.campaign_results ?? []).reduce(
@@ -277,6 +324,8 @@ export async function loadAutopilotPageData({
     campaignItemsResult,
     resultsResult,
     linksResult,
+    xQueueResult,
+    xPostResult,
   ] = await Promise.all([
     supabase.from("projects").select("*").eq("id", projectId).single(),
     supabase
@@ -352,6 +401,23 @@ export async function loadAutopilotPageData({
       .eq("owner_id", ownerId)
       .order("created_at", { ascending: false })
       .limit(20),
+    supabase
+      .from("publisher_queue")
+      .select("*")
+      .eq("project_id", projectId)
+      .eq("owner_id", ownerId)
+      .eq("platform", "x")
+      .order("created_at", { ascending: false })
+      .limit(20),
+    supabase
+      .from("scheduled_posts")
+      .select("*")
+      .eq("project_id", projectId)
+      .eq("owner_id", ownerId)
+      .eq("platform", "x")
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
 
   if (projectResult.error || !projectResult.data) {
@@ -381,6 +447,13 @@ export async function loadAutopilotPageData({
         scheduledPosts: [],
         distributionCycle: null,
       }),
+      xDiagnostics: buildXDiagnostics({
+        connections: [],
+        xQueueItems: [],
+        xPost: null,
+        scheduledPosts: [],
+        distributionCycle: null,
+      }),
       error: projectResult.error?.message || "Project not found.",
     };
   }
@@ -396,6 +469,8 @@ export async function loadAutopilotPageData({
   const campaignItems = (campaignItemsResult.data ?? []) as AutopilotCampaignItem[];
   const results = (resultsResult.data ?? []) as CampaignResultRow[];
   const links = (linksResult.data ?? []) as TrackingLinkRow[];
+  const xQueueItems = (xQueueResult.data ?? []) as PublisherQueueRow[];
+  const latestXPost = (xPostResult.data ?? null) as ScheduledPostRow | null;
   const includesDemoData =
     results.some((result) => /demo|system_test/i.test(result.learning || "")) ||
     links.some((link) => /demo|system_test/i.test(`${link.utm_source} ${link.utm_campaign}`)) ||
@@ -437,6 +512,13 @@ export async function loadAutopilotPageData({
       scheduledPosts: rawScheduledPosts,
       distributionCycle: (cycleResult.data ?? null) as DistributionCycleRow | null,
     }),
+    xDiagnostics: buildXDiagnostics({
+      connections: publishingConnections,
+      xQueueItems,
+      xPost: latestXPost,
+      scheduledPosts: rawScheduledPosts,
+      distributionCycle: (cycleResult.data ?? null) as DistributionCycleRow | null,
+    }),
     error:
       dailyRunResult.error?.message ||
       readyItemsResult.error?.message ||
@@ -447,6 +529,8 @@ export async function loadAutopilotPageData({
       campaignItemsResult.error?.message ||
       resultsResult.error?.message ||
       linksResult.error?.message ||
+      xQueueResult.error?.message ||
+      xPostResult.error?.message ||
       null,
   };
 }

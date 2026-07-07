@@ -74,6 +74,34 @@ async function updatePostRetry(post: ScheduledPostRow, reason: string) {
   return { status, reason };
 }
 
+async function updatePostFailed(post: ScheduledPostRow, reason: string) {
+  const supabase = createAdminClient();
+
+  await supabase
+    .from("scheduled_posts")
+    .update({
+      status: "failed",
+      publish_attempts: post.publish_attempts + 1,
+      failure_reason: reason,
+    })
+    .eq("id", post.id)
+    .eq("owner_id", post.owner_id);
+
+  if (post.publisher_queue_id) {
+    await supabase
+      .from("publisher_queue")
+      .update({
+        status: "failed",
+        publishing_status: "failed",
+        result_summary: reason,
+      })
+      .eq("id", post.publisher_queue_id)
+      .eq("owner_id", post.owner_id);
+  }
+
+  return { status: "failed", reason };
+}
+
 async function updatePostPublished(post: ScheduledPostRow, publishedUrl = "") {
   const supabase = createAdminClient();
   const publishedAt = new Date().toISOString();
@@ -153,7 +181,7 @@ export async function publishSinglePost(post: ScheduledPostRow) {
       return updatePostRetry(post, result.reason);
     }
 
-    return handlePublishFailure(post, result.reason);
+    return updatePostFailed(post, result.reason);
   }
 
   const adapter = getPublisherAdapter(post.platform);

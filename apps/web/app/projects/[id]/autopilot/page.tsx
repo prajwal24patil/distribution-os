@@ -1,7 +1,12 @@
 import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { goAutopilotAction, markScheduledPostPosted, runFullSystemTestAction } from "@/app/actions";
+import {
+  goAutopilotAction,
+  markScheduledPostPosted,
+  runFullSystemTestAction,
+  testXPublishAction,
+} from "@/app/actions";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { loadAutopilotPageData } from "@/lib/autopilotData";
@@ -53,6 +58,10 @@ function Metric({ label, value }: { label: string; value: string | number }) {
       <p className="mt-2 text-2xl font-semibold text-neutral-950">{value}</p>
     </div>
   );
+}
+
+function yesNo(value: boolean) {
+  return value ? "yes" : "no";
 }
 
 function SystemHealthCard({
@@ -334,6 +343,7 @@ export default async function AutopilotPage({ params, searchParams }: AutopilotP
     trackingLink: revenueTrackingUrl,
   });
   const agentHealth = buildAgentHealthDashboard(supervisor);
+  const xDiagnostics = data.xDiagnostics;
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
@@ -352,14 +362,26 @@ export default async function AutopilotPage({ params, searchParams }: AutopilotP
               accounts are connected.
             </p>
           </div>
-          <form action={goAutopilotAction}>
-            <input name="project_id" type="hidden" value={project.id} />
-            <SubmitButton
-              idleLabel="GO Autopilot"
-              pendingLabel="Working..."
-              className="h-11 rounded bg-neutral-950 px-5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-neutral-500"
-            />
-          </form>
+          <div className="flex flex-wrap gap-2">
+            <form action={goAutopilotAction}>
+              <input name="project_id" type="hidden" value={project.id} />
+              <SubmitButton
+                idleLabel="GO Autopilot"
+                pendingLabel="Working..."
+                className="h-11 rounded bg-neutral-950 px-5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-neutral-500"
+              />
+            </form>
+            {xDiagnostics.xConnected && xDiagnostics.xAutoPublishReady ? (
+              <form action={testXPublishAction}>
+                <input name="project_id" type="hidden" value={project.id} />
+                <SubmitButton
+                  idleLabel="Test X Publish"
+                  pendingLabel="Publishing..."
+                  className="h-11 rounded border border-neutral-300 px-5 text-sm font-semibold text-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-100"
+                />
+              </form>
+            ) : null}
+          </div>
         </div>
       </section>
 
@@ -373,6 +395,10 @@ export default async function AutopilotPage({ params, searchParams }: AutopilotP
         <div className="rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
           {success === "system-test"
             ? "Full system test completed."
+            : success === "x-test-published"
+              ? "Test X Publish completed."
+              : success === "x-test-failed"
+                ? "Test X Publish failed. See X failure reason below."
             : success === "go-autopilot"
               ? "GO Autopilot completed."
               : "Autopilot updated."}
@@ -442,6 +468,23 @@ export default async function AutopilotPage({ params, searchParams }: AutopilotP
           Blog publishing is auto-publish ready. LinkedIn, X, Reddit, Google, Instagram, WhatsApp,
           Quora, and YouTube remain manual-required until official accounts are connected.
         </p>
+      </section>
+
+      <section className="rounded border border-neutral-300 bg-white p-5">
+        <p className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+          X Publish Diagnostics
+        </p>
+        <div className="mt-4 grid gap-4 md:grid-cols-4">
+          <Metric label="X connected" value={yesNo(xDiagnostics.xConnected)} />
+          <Metric label="X auto-publish ready" value={yesNo(xDiagnostics.xAutoPublishReady)} />
+          <Metric label="X assets found" value={xDiagnostics.xAssetsFound} />
+          <Metric label="X publish attempted" value={yesNo(xDiagnostics.xPublishAttempted)} />
+          <Metric label="X publish status" value={xDiagnostics.xPublishStatus} />
+          <Metric label="X failure reason" value={xDiagnostics.xFailureReason || ""} />
+          <Metric label="X published URL" value={xDiagnostics.xPublishedUrl || ""} />
+          <Metric label="Published count" value={xDiagnostics.publishedCount} />
+          <Metric label="Manual required count" value={xDiagnostics.manualRequiredCount} />
+        </div>
       </section>
 
       <section className="rounded border border-neutral-300 bg-white p-5">

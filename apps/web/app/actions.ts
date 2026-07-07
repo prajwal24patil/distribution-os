@@ -17,11 +17,12 @@ import { buildGrowthActions, buildResearchRun, buildViralCampaignItems } from "@
 import { applySafeFixes, detectGrowthProblems } from "@/lib/growthProblemSolver";
 import { markPostPublished, scheduleApprovedAssets } from "@/lib/publishingScheduler";
 import { publishDuePosts } from "@/lib/publishingWorker";
-import { requirePublicAppUrlForGeneration } from "@/lib/publicUrl";
+import { requirePublicAppUrlForGeneration, toPublicUrl } from "@/lib/publicUrl";
 import { toSafeIntegerScore } from "@/lib/scoreSafety";
 import { createClient } from "@/lib/supabase/server";
 import { repairLegacyLocalTrackingLinks } from "@/lib/trackingLinkRepair";
 import { runFullSystemTest } from "@/lib/systemTestRunner";
+import { buildXPostText, publishXPost } from "@/lib/xPublisherAdapter";
 import type {
   CampaignItemStatus,
   CampaignResultRow,
@@ -30,7 +31,9 @@ import type {
   GrowthActionCategory,
   GrowthActionStatus,
   PublishingConnectionPlatform,
+  PublishingConnectionRow,
   ProjectStatus,
+  ScheduledPostRow,
   TrackingLinkRow,
 } from "@/lib/supabase/types";
 
@@ -79,6 +82,18 @@ type DailyAutopilotCampaignItem = {
 type DailyAutopilotCampaign = {
   campaign_items?: DailyAutopilotCampaignItem[];
 };
+
+const X_SMOKE_POST_TEMPLATE = `Most freshers apply harder, but still get no callbacks.
+
+The issue is usually weak profile signals:
+- unclear role target
+- generic projects
+- missing proof
+- weak keywords
+
+Check your CareerScore before applying again.
+
+{tracking_link}`;
 
 function getString(formData: FormData, key: string, fallback = "") {
   const value = formData.get(key);
@@ -1699,6 +1714,261 @@ export async function goAutopilotAction(formData: FormData) {
   revalidatePath(`/projects/${projectId}/campaigns`);
   revalidatePath(`/projects/${projectId}/social-share`);
   redirect(`${pathname}?success=go-autopilot&repaired=${repairCount}`);
+}
+
+export async function testXPublishAction(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const projectId = getString(formData, "project_id");
+  const pathname = `/projects/${projectId}/autopilot`;
+
+  if (!projectId) {
+    redirectWithError("/projects", "Project is required.");
+  }
+
+  try {
+    requirePublicAppUrlForGeneration();
+  } catch (error) {
+    redirectWithError(
+      pathname,
+      error instanceof Error ? error.message : "Public tracking URL setup is required.",
+    );
+  }
+
+  const [projectResult, memoryResult, connectionResult] = await Promise.all([
+    supabase
+      .from("projects")
+      .select("id, customer")
+      .eq("id", projectId)
+      .eq("user_id", user.id)
+      .single(),
+    supabase
+      .from("product_memory")
+      .select("website_url")
+      .eq("project_id", projectId)
+      .eq("owner_id", user.id)
+      .maybeSingle(),
+    supabase
+      .from("publishing_connections")
+      .select("*")
+      .eq("project_id", projectId)
+      .eq("owner_id", user.id)
+      .eq("platform", "x")
+      .maybeSingle(),
+  ]);
+
+  if (projectResult.error || !projectResult.data) {
+    redirectWithError(pathname, projectResult.error?.message || "Project not found.");
+  }
+
+  if (memoryResult.error || !memoryResult.data?.website_url) {
+    redirectWithError(pathname, memoryResult.error?.message || "CareerScore URL is required.");
+  }
+
+  const connection = connectionResult.data as PublishingConnectionRow | null;
+
+  if (
+    connectionResult.error ||
+    !connection ||
+    connection.connection_status !== "connected" ||
+    !connection.access_token_encrypted
+  ) {
+    redirectWithError(pathname, connectionResult.error?.message || "X is not connected.");
+  }
+
+  const { data: campaign, error: campaignError } = await supabase
+    .from("campaigns")
+    .insert({
+      project_id: projectId,
+      owner_id: user.id,
+      name: `${projectResult.data.customer || "CareerScore"} X Publish Smoke Test`,
+      campaign_type: "linkedin_founder_post",
+      status: "active",
+      next_action: "Review X smoke publish result.",
+    })
+    .select("id")
+    .single();
+
+  if (campaignError || !campaign) {
+    redirectWithError(pathname, campaignError?.message || "X smoke campaign could not be created.");
+  }
+
+  const trackingId = crypto.randomUUID();
+  const trackingUrl = toPublicUrl(`/t/${trackingId}`);
+  const content = X_SMOKE_POST_TEMPLATE.replace("{tracking_link}", trackingUrl);
+
+  const { data: item, error: itemError } = await supabase
+    .from("campaign_items")
+    .insert({
+      campaign_id: campaign.id,
+      project_id: projectId,
+      owner_id: user.id,
+      campaign_type: "linkedin_founder_post",
+      channel: "x",
+      hook: "Most freshers apply harder, but still get no callbacks.",
+      content,
+      target_audience: "CareerScore job seekers",
+      cta: "Check your CareerScore before applying again.",
+      expected_outcome: "Production-safe X smoke publish.",
+      utm_source: "x",
+      utm_medium: "organic",
+      utm_campaign: "x-publish-smoke-test",
+      utm_content: "career-readiness-signals",
+      utm_link: memoryResult.data.website_url,
+      status: "approved",
+    })
+    .select("id")
+    .single();
+
+  if (itemError || !item) {
+    redirectWithError(pathname, itemError?.message || "X smoke asset could not be created.");
+  }
+
+  const { error: trackingError } = await supabase.from("tracking_links").insert({
+    id: trackingId,
+    project_id: projectId,
+    owner_id: user.id,
+    campaign_item_id: item.id,
+    destination_url: memoryResult.data.website_url,
+    utm_source: "x",
+    utm_medium: "organic",
+    utm_campaign: "x-publish-smoke-test",
+    utm_content: "career-readiness-signals",
+    tracking_url: trackingUrl,
+  });
+
+  if (trackingError) {
+    redirectWithError(pathname, trackingError.message);
+  }
+
+  const { data: queueItem, error: queueError } = await supabase
+    .from("publisher_queue")
+    .insert({
+      project_id: projectId,
+      owner_id: user.id,
+      campaign_item_id: item.id,
+      platform: "x",
+      content_type: "x_post",
+      title: "Most freshers apply harder, but still get no callbacks.",
+      content,
+      tracking_url: trackingUrl,
+      status: "approved",
+      asset_type: "x_post",
+      format: "short post",
+      quality_score: 95,
+      qa_status: "approved",
+      qa_reason: "Production-safe X smoke post.",
+      predicted_rank_score: 95,
+      publishing_status: "auto_publish_ready",
+      result_summary: "Testing official X API publish.",
+    })
+    .select("id")
+    .single();
+
+  if (queueError || !queueItem) {
+    redirectWithError(pathname, queueError?.message || "X smoke queue item could not be created.");
+  }
+
+  const { data: scheduledPost, error: scheduledError } = await supabase
+    .from("scheduled_posts")
+    .insert({
+      project_id: projectId,
+      owner_id: user.id,
+      publisher_queue_id: queueItem.id,
+      platform: "x",
+      content_type: "x_post",
+      title: "Most freshers apply harder, but still get no callbacks.",
+      content,
+      tracking_url: trackingUrl,
+      scheduled_for: new Date(Date.now() - 1000).toISOString(),
+      timezone: "Asia/Kolkata",
+      status: "scheduled",
+      publish_mode: "official_auto_publish",
+      failure_reason: "",
+    })
+    .select("*")
+    .single();
+
+  if (scheduledError || !scheduledPost) {
+    redirectWithError(
+      pathname,
+      scheduledError?.message || "X smoke scheduled post could not be created.",
+    );
+  }
+
+  const post = scheduledPost as ScheduledPostRow;
+  const publishResult = await publishXPost(post, connection);
+
+  if (publishResult.status === "published") {
+    const publishedAt = new Date().toISOString();
+    const publishedContent = buildXPostText(post);
+
+    const { error: publishedError } = await supabase
+      .from("scheduled_posts")
+      .update({
+        status: "published",
+        publish_attempts: post.publish_attempts + 1,
+        published_at: publishedAt,
+        published_url: publishResult.publishedUrl,
+        failure_reason: "",
+        content: publishedContent,
+      })
+      .eq("id", post.id)
+      .eq("owner_id", user.id);
+
+    if (publishedError) {
+      redirectWithError(pathname, publishedError.message);
+    }
+
+    await supabase
+      .from("publisher_queue")
+      .update({
+        status: "posted",
+        publishing_status: "published",
+        published_url: publishResult.publishedUrl,
+        posted_url: publishResult.publishedUrl,
+        result_summary: "Published through official X API.",
+      })
+      .eq("id", queueItem.id)
+      .eq("owner_id", user.id);
+
+    revalidatePath(pathname);
+    revalidatePath(`/projects/${projectId}/social-share`);
+    redirect(`${pathname}?success=x-test-published`);
+  }
+
+  const failureReason = publishResult.reason || "X API publish failed.";
+
+  await supabase
+    .from("scheduled_posts")
+    .update({
+      status: "failed",
+      publish_attempts: post.publish_attempts + 1,
+      failure_reason: failureReason,
+    })
+    .eq("id", post.id)
+    .eq("owner_id", user.id);
+
+  await supabase
+    .from("publisher_queue")
+    .update({
+      status: "failed",
+      publishing_status: "failed",
+      result_summary: failureReason,
+    })
+    .eq("id", queueItem.id)
+    .eq("owner_id", user.id);
+
+  revalidatePath(pathname);
+  revalidatePath(`/projects/${projectId}/social-share`);
+  redirect(`${pathname}?success=x-test-failed`);
 }
 
 export async function approvePublisherQueueItem(formData: FormData) {

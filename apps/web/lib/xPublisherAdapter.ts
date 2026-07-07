@@ -62,6 +62,10 @@ function manualRequired(reason: string): XPublishResult {
   return { status: "manual_required", reason, publishedUrl: "" };
 }
 
+export function buildXPostText(post: ScheduledPostRow) {
+  return xPostText(post);
+}
+
 export async function publishXPost(
   post: ScheduledPostRow,
   connection: PublishingConnectionRow | null,
@@ -146,7 +150,7 @@ export async function publishXPost(
     const responseBody = await response.text();
 
     return {
-      status: "retry_scheduled",
+      status: "failed",
       reason: `X API publish failed (${response.status}): ${responseBody.slice(0, 500)}`,
       publishedUrl: "",
     };
@@ -157,7 +161,7 @@ export async function publishXPost(
 
   if (!postId) {
     return {
-      status: "retry_scheduled",
+      status: "failed",
       reason: "X API did not return a post id.",
       publishedUrl: "",
     };
