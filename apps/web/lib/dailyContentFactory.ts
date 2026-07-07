@@ -102,6 +102,7 @@ export function createShortVideoScriptAgent({
     voiceover: script.voiceover,
     caption: script.caption,
     hashtags: script.hashtags.join(" "),
+    thumbnail_text: "No callbacks? Check the gap first",
     cta: script.cta,
     tracking_link: trackingUrl,
   };

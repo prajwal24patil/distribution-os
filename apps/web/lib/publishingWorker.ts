@@ -1,6 +1,7 @@
 import { isBlogPlatform, publishInternalBlogPost } from "@/lib/blogPublisher";
 import { getPublisherAdapter } from "@/lib/publisherAdapters";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { publishXPost } from "@/lib/xPublisherAdapter";
 import type {
   PublishingConnectionPlatform,
   PublishingConnectionRow,
@@ -53,6 +54,59 @@ async function updatePostFailure(post: ScheduledPostRow, reason: string) {
   return { status, reason };
 }
 
+async function updatePostRetry(post: ScheduledPostRow, reason: string) {
+  const supabase = createAdminClient();
+  const attempts = post.publish_attempts + 1;
+  const retryAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+  const status = attempts >= MAX_ATTEMPTS ? "manual_required" : "retry_scheduled";
+
+  await supabase
+    .from("scheduled_posts")
+    .update({
+      status,
+      publish_attempts: attempts,
+      scheduled_for: retryAt,
+      failure_reason: reason,
+    })
+    .eq("id", post.id)
+    .eq("owner_id", post.owner_id);
+
+  return { status, reason };
+}
+
+async function updatePostPublished(post: ScheduledPostRow, publishedUrl = "") {
+  const supabase = createAdminClient();
+  const publishedAt = new Date().toISOString();
+
+  await supabase
+    .from("scheduled_posts")
+    .update({
+      status: "published",
+      publish_attempts: post.publish_attempts + 1,
+      published_at: publishedAt,
+      published_url: publishedUrl,
+      failure_reason: "",
+    })
+    .eq("id", post.id)
+    .eq("owner_id", post.owner_id);
+
+  if (post.publisher_queue_id) {
+    await supabase
+      .from("publisher_queue")
+      .update({
+        status: "posted",
+        publishing_status: "published",
+        published_url: publishedUrl,
+        posted_url: publishedUrl,
+        result_summary: "Published through official X API.",
+      })
+      .eq("id", post.publisher_queue_id)
+      .eq("owner_id", post.owner_id);
+  }
+
+  return { status: "published", reason: "", publishedUrl };
+}
+
 export async function handlePublishFailure(post: ScheduledPostRow, reason: string) {
   return updatePostFailure(post, reason);
 }
@@ -77,11 +131,29 @@ export async function publishSinglePost(post: ScheduledPostRow) {
   const connection = await getConnection(post);
   const connected = connection?.connection_status === "connected";
 
+  if (connection?.connection_status === "rate_limited") {
+    return updatePostRetry(post, "Platform rate limit active.");
+  }
+
   if (!connected) {
     return handlePublishFailure(
       post,
       "Official account connection required before auto-publishing.",
     );
+  }
+
+  if (normalizePlatform(post.platform) === "x") {
+    const result = await publishXPost(post, connection);
+
+    if (result.status === "published") {
+      return updatePostPublished(post, result.publishedUrl);
+    }
+
+    if (result.status === "retry_scheduled") {
+      return updatePostRetry(post, result.reason);
+    }
+
+    return handlePublishFailure(post, result.reason);
   }
 
   const adapter = getPublisherAdapter(post.platform);
@@ -105,18 +177,7 @@ export async function publishSinglePost(post: ScheduledPostRow) {
     );
   }
 
-  const supabase = createAdminClient();
-  await supabase
-    .from("scheduled_posts")
-    .update({
-      status: "published",
-      publish_attempts: post.publish_attempts + 1,
-      failure_reason: "",
-    })
-    .eq("id", post.id)
-    .eq("owner_id", post.owner_id);
-
-  return { status: "published", reason: "" };
+  return updatePostPublished(post);
 }
 
 export async function publishDuePosts(
@@ -128,7 +189,13 @@ export async function publishDuePosts(
     .from("scheduled_posts")
     .select("*")
     .lte("scheduled_for", new Date().toISOString())
-    .in("status", ["scheduled", "ready", "manual_required", "auto_publish_ready"])
+    .in("status", [
+      "scheduled",
+      "ready",
+      "manual_required",
+      "retry_scheduled",
+      "auto_publish_ready",
+    ])
     .order("scheduled_for", { ascending: true });
 
   if (filters.projectId) {

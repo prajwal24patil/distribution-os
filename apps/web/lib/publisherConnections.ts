@@ -23,13 +23,38 @@ export type PublisherConnectionView = {
   platform: PublishingConnectionPlatform;
   connection_status: PublishingConnectionStatus;
   account_name: string;
+  token_connected: boolean;
+  env_configured: boolean;
+  missing_env: string[];
+  auto_publish_status:
+    | "auto_publish_ready"
+    | "connect_available"
+    | "setup_incomplete"
+    | "manual_required";
   can_auto_publish: boolean;
   explanation: string;
   setup_steps: string;
 };
 
+function xMissingEnv() {
+  const requiredEnv: Array<[string, string | undefined]> = [
+    ["X_CLIENT_ID", process.env.X_CLIENT_ID?.trim()],
+    ["X_CLIENT_SECRET", process.env.X_CLIENT_SECRET?.trim()],
+    ["X_REDIRECT_URI", process.env.X_REDIRECT_URI?.trim()],
+    ["PLATFORM_TOKEN_ENCRYPTION_KEY", process.env.PLATFORM_TOKEN_ENCRYPTION_KEY?.trim()],
+  ];
+
+  return requiredEnv.filter(([, value]) => !value).map(([key]) => key);
+}
+
 export function connectionCanAutoPublish(connection: PublishingConnectionRow | null | undefined) {
-  return connection?.platform === "blog" || connection?.connection_status === "connected";
+  if (connection?.platform === "blog") return true;
+
+  return (
+    connection?.platform === "x" &&
+    connection.connection_status === "connected" &&
+    Boolean(connection.access_token_encrypted)
+  );
 }
 
 export function explainConnectionStatus(connection: PublishingConnectionRow | null | undefined) {
@@ -81,12 +106,31 @@ function toView(
       platform,
       connection_status: platform === "blog" ? "connected" : "manual_required",
       account_name: "",
+      access_token_encrypted: "",
     } as PublishingConnectionRow);
+  const missingEnv = platform === "x" ? xMissingEnv() : [];
+  const tokenConnected = Boolean(syntheticConnection.access_token_encrypted);
+  const xReady =
+    platform === "x" && syntheticConnection.connection_status === "connected" && tokenConnected;
+  const autoPublishStatus =
+    platform === "blog"
+      ? "auto_publish_ready"
+      : xReady
+        ? "auto_publish_ready"
+        : platform === "x" && missingEnv.length === 0
+          ? "connect_available"
+          : platform === "x"
+            ? "setup_incomplete"
+            : "manual_required";
 
   return {
     platform,
     connection_status: syntheticConnection.connection_status,
     account_name: syntheticConnection.account_name,
+    token_connected: tokenConnected,
+    env_configured: missingEnv.length === 0,
+    missing_env: missingEnv,
+    auto_publish_status: autoPublishStatus,
     can_auto_publish: connectionCanAutoPublish(syntheticConnection),
     explanation: explainConnectionStatus(syntheticConnection),
     setup_steps: getMissingConnectionSteps(platform),

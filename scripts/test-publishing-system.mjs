@@ -84,7 +84,10 @@ const timing = read("apps/web/lib/platformTimingAgent.ts");
 ok(timing.includes("return nextDateForWindow"), "best posting time returns a future date");
 
 const scheduler = read("apps/web/lib/publishingScheduler.ts");
-ok(scheduler.includes("tracking_url: item.tracking_url"), "tracking URL exists in scheduled asset");
+ok(
+  scheduler.includes("tracking_url: sanitizePublicTrackingUrl(item.tracking_url)"),
+  "tracking URL exists in scheduled asset and is sanitized",
+);
 ok(
   scheduler.includes("unique") === false,
   "duplicate prevention is handled in scheduler logic, not by unsafe rewrite",

@@ -51,12 +51,18 @@ function normalizedContentKey({
 }
 
 function hasOfficialPublishing({
+  platform,
   connection,
   memory,
 }: {
+  platform: string;
   connection: PublishingConnectionRow | undefined;
   memory: ProductMemoryRow | null;
 }) {
+  if (platform === "x") {
+    return connection?.connection_status === "connected";
+  }
+
   return (
     connection?.connection_status === "connected" &&
     memory?.publishing_mode === "official_auto_publish_ready"
@@ -122,12 +128,14 @@ export async function scheduleOneAsset({
   }
 
   const connection = connections.find((row) => row.platform === platform);
-  const officialReady = hasOfficialPublishing({ connection, memory });
+  const officialReady = hasOfficialPublishing({ platform, connection, memory });
   const adapter = getPublisherAdapter(platform);
   const adapterStatus = adapter?.validateConnection(officialReady);
+  const needsManualReview = item.qa_status && item.qa_status !== "approved";
   const manualRequired =
     platform !== "blog" &&
-    (!officialReady || adapterStatus?.status === "official_integration_not_implemented");
+    (!officialReady ||
+      (platform !== "x" && adapterStatus?.status === "official_integration_not_implemented"));
 
   return {
     project_id: item.project_id,
@@ -140,10 +148,17 @@ export async function scheduleOneAsset({
     tracking_url: sanitizePublicTrackingUrl(item.tracking_url),
     scheduled_for: scheduledFor.toISOString(),
     timezone: "Asia/Kolkata",
-    status: manualRequired ? "manual_required" : "scheduled",
+    status: needsManualReview
+      ? "manual_review_required"
+      : manualRequired
+        ? "manual_required"
+        : "scheduled",
     publish_mode: officialReady ? "official_auto_publish" : "manual_approval",
-    failure_reason:
-      adapterStatus?.status === "official_integration_not_implemented" ? adapterStatus.reason : "",
+    failure_reason: needsManualReview
+      ? "QC approval is required before auto-posting."
+      : adapterStatus?.status === "official_integration_not_implemented"
+        ? adapterStatus.reason
+        : "",
   };
 }
 

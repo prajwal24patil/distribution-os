@@ -3370,6 +3370,86 @@ Passed:
 - `npm run test:autonomous-distribution`
 - `backend/.venv/Scripts/python.exe -m pytest` from `backend/`
 
+## Recovery Checkpoint - 2026-07-01
+
+Status: verified on local checks.
+
+Recovered the latest DistributionOS state from project memory and repository scan without starting a new project.
+
+### Current Phase
+
+The current working checkpoint remains the 24/7 Daily Autopilot MVP for CareerScore:
+
+- GO Autopilot content generation, QA, scheduling, safe queueing, and internal blog publishing
+- production tracking-link hardening and local/LAN link repair
+- CareerScore webhook robustness
+- protected cron distribution route
+- dashboard QC and three-page founder UX
+- platform connection and publisher adapter foundation
+
+### Explicit Exclusions Still Active
+
+No new scope was added for:
+
+- AI agents beyond existing local deterministic/autopilot helpers
+- RAG
+- OpenAI integration
+- content publishing to external social platforms
+- scraping
+- external outreach
+- analytics automation
+- CRM
+- billing
+- multi-tenant architecture
+- workflow engines
+
+### Recent Change
+
+Updated:
+
+- `scripts/test-publishing-system.mjs`
+
+The publishing-system QA test now checks the current safer scheduler behavior:
+
+- scheduled assets carry `item.tracking_url`
+- the value is passed through `sanitizePublicTrackingUrl(item.tracking_url)` before insertion
+
+No production behavior, routes, database schema, dashboard UI, cron behavior, or publisher adapter behavior changed.
+
+### Verified Surfaces
+
+Verified:
+
+- current build and generated Next.js route list
+- founder routes: `/`, `/results`, `/settings`
+- project routes, including `/projects/[id]/autopilot`, `/projects/[id]/results`, `/projects/[id]/settings`, and advanced internal pages
+- tracking redirect route: `/t/[tracking_link_id]`
+- cron routes: `/api/cron/distribution` and `/api/cron/distribution-cycle`
+- CareerScore webhook: `/api/events/careerscore`
+- Autopilot dashboard and Dashboard QC
+- publisher adapters and platform connection stubs
+- public tracking-link sanitation
+- GO Autopilot daily content, safe publishing queue, and blog auto-publish checks
+- deployment setup files: Dockerfiles, local compose file, environment examples, and GitHub Actions CI
+
+### Checks Verified
+
+Passed:
+
+- `npm run verify`
+- `npm run test:cron-distribution`
+- `npm run test:cron-production-route`
+- `npm run test:dashboard-qc`
+- `npm run test:platform-publisher-adapters`
+- `npm run test:platform-connections`
+- `npm run test:public-tracking-links`
+- `npm run test:go-autopilot`
+- `npm run test:daily-content-factory`
+- `npm run test:safe-publishing-queue`
+- `npm run test:blog-auto-publish`
+- `npm run test:publishing-system`
+- `npm run test:careerscore-webhook`
+
 ## Current MVP State - 24/7 Production Automation Foundation
 
 Status: verified on local checks.

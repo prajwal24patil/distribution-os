@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 import type {
   CampaignItemInsert,
   PublisherQueueInsert,
+  PublishingConnectionRow,
   TrackingLinkInsert,
 } from "@/lib/supabase/types";
 
@@ -22,6 +23,45 @@ function slug(value: string) {
 function queuePlatform(platform: string) {
   if (platform === "Google Business") return "Google Business";
   return platform;
+}
+
+function queuePublishingStatus(platform: string, connections: PublishingConnectionRow[]) {
+  const normalized = platform.toLowerCase();
+
+  if (normalized === "blog") return "auto_publish_ready";
+
+  if (
+    normalized === "x" &&
+    connections.some(
+      (connection) => connection.platform === "x" && connection.connection_status === "connected",
+    )
+  ) {
+    return "auto_publish_ready";
+  }
+
+  if (normalized === "youtube" || normalized === "instagram") {
+    return "manual_required_upload_ready_package";
+  }
+
+  return "manual_approval_required";
+}
+
+function manualInstructionsFor(platform: string) {
+  const normalized = platform.toLowerCase();
+
+  if (normalized === "x") {
+    return "Connect X to auto-post through the official API, or copy and post manually.";
+  }
+
+  if (normalized === "youtube" || normalized === "instagram") {
+    return "Upload-ready package prepared. Review title, description, script, caption, hashtags, thumbnail text, and tracking link before manual upload.";
+  }
+
+  if (normalized === "blog") {
+    return "Internal blog publishing can run automatically when scheduled.";
+  }
+
+  return "Copy and publish manually unless an official API connection is connected.";
 }
 
 function nextBestAction({
@@ -175,14 +215,21 @@ export async function runGoAutopilot(projectId: string): Promise<GoAutopilotSumm
 
   const approved = guarded.filter((asset) => asset.qaStatus === "approved");
   const blocked = guarded.filter((asset) => asset.qaStatus === "rejected");
+  const { data: connectionData } = await supabase
+    .from("publishing_connections")
+    .select("*")
+    .eq("project_id", projectId)
+    .eq("owner_id", user.id);
+  const connections = (connectionData ?? []) as PublishingConnectionRow[];
   const queueRows: PublisherQueueInsert[] = approved.map((asset, index) => {
     const campaignItem = insertedItems[guarded.indexOf(asset)];
+    const platform = queuePlatform(asset.platform);
 
     return {
       project_id: projectId,
       owner_id: user.id,
       campaign_item_id: campaignItem?.id ?? null,
-      platform: queuePlatform(asset.platform),
+      platform,
       content_type: asset.assetType,
       title: asset.title,
       content: asset.finalContent,
@@ -198,9 +245,8 @@ export async function runGoAutopilot(projectId: string): Promise<GoAutopilotSumm
       qa_status: asset.qaStatus,
       qa_reason: asset.qaReason,
       predicted_rank_score: toSafeIntegerScore(asset.predictedRankScore - index * 0.1),
-      publishing_status:
-        asset.platform === "Blog" ? "auto_publish_ready" : "manual_approval_required",
-      result_summary: "Created by GO Autopilot. Awaiting publishing or manual result.",
+      publishing_status: queuePublishingStatus(platform, connections),
+      result_summary: manualInstructionsFor(platform),
     };
   });
 

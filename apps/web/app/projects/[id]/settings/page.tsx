@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { updateProject } from "@/app/actions";
+import { disconnectPublishingConnection, updateProject } from "@/app/actions";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { requireUser } from "@/lib/auth";
@@ -14,6 +14,7 @@ type SettingsPageProps = {
     id: string;
   }>;
   searchParams: Promise<{
+    connected?: string;
     error?: string;
     success?: string;
   }>;
@@ -95,7 +96,7 @@ function connectionUiState({
 
 export default async function ProjectSettingsPage({ params, searchParams }: SettingsPageProps) {
   const { id } = await params;
-  const { error: actionError, success } = await searchParams;
+  const { connected, error: actionError, success } = await searchParams;
   const { supabase, user } = await requireUser();
   const requestHeaders = await headers();
   const host = requestHeaders.get("x-forwarded-host") || requestHeaders.get("host");
@@ -116,6 +117,11 @@ export default async function ProjectSettingsPage({ params, searchParams }: Sett
     officialConnectionPlatforms.includes(connection.platform),
   );
   const blogConnection = connections.find((connection) => connection.platform === "blog");
+  const xConnection = connections.find((connection) => connection.platform === "x");
+  const manualRequiredPlatforms = officialConnections
+    .filter((connection) => connection.platform !== "x")
+    .map((connection) => platformLabel(connection.platform))
+    .join(", ");
   const { data: memory } = await supabase
     .from("product_memory")
     .select("website_url, product_url")
@@ -126,6 +132,37 @@ export default async function ProjectSettingsPage({ params, searchParams }: Sett
     memory?.product_url || memory?.website_url || "Add CareerScore URL in Product Memory";
   const hasWebhookSecret = Boolean(process.env.CAREERSCORE_WEBHOOK_SECRET);
   const hasCronSecret = Boolean(process.env.CRON_SECRET);
+  const [trackingResult, cycleResult, publisherResult] = await Promise.all([
+    supabase
+      .from("tracking_links")
+      .select("id")
+      .eq("project_id", project.id)
+      .eq("owner_id", user.id)
+      .limit(1),
+    supabase
+      .from("distribution_cycles")
+      .select("status, created_at, learning_summary")
+      .eq("project_id", project.id)
+      .eq("owner_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(1),
+    supabase
+      .from("scheduled_posts")
+      .select("platform, status, failure_reason, updated_at")
+      .eq("project_id", project.id)
+      .eq("owner_id", user.id)
+      .order("updated_at", { ascending: false })
+      .limit(1),
+  ]);
+  const latestCycle = cycleResult.data?.[0];
+  const latestPublisherResult = publisherResult.data?.[0];
+  const xEnvConfigured = Boolean(
+    process.env.X_CLIENT_ID &&
+      process.env.X_CLIENT_SECRET &&
+      process.env.X_REDIRECT_URI &&
+      process.env.PLATFORM_TOKEN_ENCRYPTION_KEY,
+  );
+  const xTokenConnected = Boolean(xConnection?.token_connected);
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
@@ -150,7 +187,13 @@ export default async function ProjectSettingsPage({ params, searchParams }: Sett
 
       {success ? (
         <div className="rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          Settings saved.
+          {success === "disconnected" ? "Platform disconnected." : "Settings saved."}
+        </div>
+      ) : null}
+
+      {connected === "x" ? (
+        <div className="rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          X connected. Auto-publish is ready for approved X assets.
         </div>
       ) : null}
 
@@ -187,6 +230,86 @@ export default async function ProjectSettingsPage({ params, searchParams }: Sett
       <section className="rounded border border-neutral-300 bg-white p-5">
         <div className="flex flex-col gap-2 border-b border-neutral-200 pb-4">
           <p className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+            Audit / Health
+          </p>
+          <h3 className="text-xl font-semibold text-neutral-950">Production readiness status</h3>
+        </div>
+        <div className="mt-4 grid gap-4 md:grid-cols-3">
+          <div className="rounded border border-neutral-200 p-4">
+            <p className="text-sm font-semibold text-neutral-950">Supabase connected</p>
+            <p className="mt-2 text-sm text-neutral-700">yes</p>
+          </div>
+          <div className="rounded border border-neutral-200 p-4">
+            <p className="text-sm font-semibold text-neutral-950">Cron configured</p>
+            <p className="mt-2 text-sm text-neutral-700">{hasCronSecret ? "yes" : "no"}</p>
+          </div>
+          <div className="rounded border border-neutral-200 p-4">
+            <p className="text-sm font-semibold text-neutral-950">Tracking links OK</p>
+            <p className="mt-2 text-sm text-neutral-700">
+              {(trackingResult.data ?? []).length > 0 ? "yes" : "needs Autopilot run"}
+            </p>
+          </div>
+          <div className="rounded border border-neutral-200 p-4">
+            <p className="text-sm font-semibold text-neutral-950">CareerScore webhook</p>
+            <p className="mt-2 text-sm text-neutral-700">{hasWebhookSecret ? "yes" : "no"}</p>
+          </div>
+          <div className="rounded border border-neutral-200 p-4">
+            <p className="text-sm font-semibold text-neutral-950">Blog publishing ready</p>
+            <p className="mt-2 text-sm text-neutral-700">yes</p>
+          </div>
+          <div className="rounded border border-neutral-200 p-4">
+            <p className="text-sm font-semibold text-neutral-950">X env configured</p>
+            <p className="mt-2 text-sm text-neutral-700">{xEnvConfigured ? "yes" : "no"}</p>
+          </div>
+          <div className="rounded border border-neutral-200 p-4">
+            <p className="text-sm font-semibold text-neutral-950">X account connected</p>
+            <p className="mt-2 text-sm text-neutral-700">{xTokenConnected ? "yes" : "no"}</p>
+          </div>
+          <div className="rounded border border-neutral-200 p-4">
+            <p className="text-sm font-semibold text-neutral-950">X publish test status</p>
+            <p className="mt-2 text-sm text-neutral-700">
+              {latestPublisherResult?.platform === "x"
+                ? latestPublisherResult.status
+                : "not run yet"}
+            </p>
+          </div>
+          <div className="rounded border border-neutral-200 p-4">
+            <p className="text-sm font-semibold text-neutral-950">Last Autopilot run</p>
+            <p className="mt-2 text-sm text-neutral-700">
+              {latestCycle?.created_at
+                ? new Date(latestCycle.created_at).toLocaleString("en-IN", {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })
+                : "not run yet"}
+            </p>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <div className="rounded border border-neutral-200 p-4">
+            <p className="text-sm font-semibold text-neutral-950">Last errors</p>
+            <p className="mt-2 text-sm text-neutral-700">
+              {latestPublisherResult?.failure_reason || latestCycle?.learning_summary || "none"}
+            </p>
+          </div>
+          <div className="rounded border border-neutral-200 p-4">
+            <p className="text-sm font-semibold text-neutral-950">Manual-required platforms</p>
+            <p className="mt-2 text-sm text-neutral-700">
+              {manualRequiredPlatforms || "none"}
+            </p>
+          </div>
+        </div>
+        <Link
+          className="mt-4 inline-flex h-9 items-center rounded border border-neutral-300 px-3 text-sm font-semibold text-neutral-700 transition hover:bg-neutral-100"
+          href={`/api/debug/platform-status?projectId=${project.id}`}
+        >
+          View safe debug status
+        </Link>
+      </section>
+
+      <section className="rounded border border-neutral-300 bg-white p-5">
+        <div className="flex flex-col gap-2 border-b border-neutral-200 pb-4">
+          <p className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
             Platform Connections
           </p>
           <h3 className="text-xl font-semibold text-neutral-950">
@@ -216,10 +339,32 @@ export default async function ProjectSettingsPage({ params, searchParams }: Sett
 
         <div className="mt-5 grid gap-3">
           {officialConnections.map((connection) => {
-            const ui = connectionUiState({
+            const baseUi = connectionUiState({
               platform: connection.platform,
               status: connection.connection_status,
             });
+            const ui =
+              connection.platform === "x" && connection.auto_publish_status === "auto_publish_ready"
+                ? {
+                    label: "Auto-publish ready",
+                    helper:
+                      "X Connected. Approved X assets can publish through the official X API.",
+                    className: "border-emerald-200 bg-emerald-50 text-emerald-800",
+                  }
+                : connection.platform === "x" &&
+                    connection.auto_publish_status === "connect_available"
+                  ? {
+                      label: "Connect available",
+                      helper: "X env is configured. Connect the official CareerScore X account.",
+                      className: "border-blue-200 bg-blue-50 text-blue-800",
+                    }
+                  : connection.platform === "x"
+                    ? {
+                        label: "X setup incomplete",
+                        helper: `Missing env: ${connection.missing_env.join(", ")}`,
+                        className: "border-amber-200 bg-amber-50 text-amber-800",
+                      }
+                    : baseUi;
 
             return (
               <div
@@ -234,9 +379,24 @@ export default async function ProjectSettingsPage({ params, searchParams }: Sett
                     Status: {connection.connection_status}
                   </p>
                   <p className="mt-1 text-sm text-neutral-700">{ui.helper}</p>
+                  {connection.platform === "x" ? (
+                    <div className="mt-2 grid gap-1 text-xs leading-5 text-neutral-600">
+                      <p>X env configured: {connection.env_configured ? "yes" : "no"}</p>
+                      <p>X token connected: {connection.token_connected ? "yes" : "no"}</p>
+                      <p>
+                        X auto-publish ready:{" "}
+                        {connection.auto_publish_status === "auto_publish_ready" ? "yes" : "no"}
+                      </p>
+                    </div>
+                  ) : null}
                   <p className="mt-1 text-xs leading-5 text-neutral-500">
                     {connection.setup_steps}
                   </p>
+                  {connection.platform === "x" && connection.token_connected ? (
+                    <p className="mt-1 text-sm text-neutral-700">
+                      X Connected account: {connection.account_name || "X account"}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="flex flex-col gap-2 md:items-end">
                   <span
@@ -244,7 +404,31 @@ export default async function ProjectSettingsPage({ params, searchParams }: Sett
                   >
                     {ui.label}
                   </span>
-                  <p className="text-xs text-neutral-500">Copy/manual instructions available.</p>
+                  {connection.platform === "x" ? (
+                    <div className="flex flex-wrap gap-2 md:justify-end">
+                      <Link
+                        className="inline-flex h-8 items-center rounded border border-neutral-300 px-3 text-xs font-semibold text-neutral-700 transition hover:bg-neutral-100"
+                        href={`/api/oauth/x/start?projectId=${project.id}`}
+                      >
+                        {connection.token_connected ? "Reconnect" : "Connect X"}
+                      </Link>
+                      {connection.token_connected ? (
+                        <form action={disconnectPublishingConnection}>
+                          <input name="project_id" type="hidden" value={project.id} />
+                          <input name="platform" type="hidden" value="x" />
+                          <SubmitButton
+                            idleLabel="Disconnect"
+                            pendingLabel="Working..."
+                            className="h-8 rounded border border-neutral-300 px-3 text-xs font-semibold text-neutral-700 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:bg-neutral-100"
+                          />
+                        </form>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-neutral-500">
+                      {connection.platform === "blog" ? "Ready now." : "Connect soon"}
+                    </p>
+                  )}
                 </div>
               </div>
             );

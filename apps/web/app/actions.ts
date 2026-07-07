@@ -29,6 +29,7 @@ import type {
   ExecutionResultStatus,
   GrowthActionCategory,
   GrowthActionStatus,
+  PublishingConnectionPlatform,
   ProjectStatus,
   TrackingLinkRow,
 } from "@/lib/supabase/types";
@@ -91,6 +92,22 @@ function getNumber(formData: FormData, key: string, fallback = 0) {
 
 function getNonNegativeNumber(formData: FormData, key: string) {
   return Math.max(0, getNumber(formData, key, 0));
+}
+
+function isPublishingConnectionPlatform(value: string): value is PublishingConnectionPlatform {
+  return [
+    "linkedin",
+    "x",
+    "google_business_profile",
+    "reddit",
+    "facebook_page",
+    "instagram_business",
+    "youtube",
+    "quora_manual",
+    "whatsapp_manual",
+    "email_manual",
+    "blog",
+  ].includes(value);
 }
 
 function redirectWithError(pathname: string, message: string): never {
@@ -1914,6 +1931,49 @@ export async function markScheduledPostPosted(formData: FormData) {
 
   revalidatePath(pathname);
   redirect(`${pathname}?success=posted`);
+}
+
+export async function disconnectPublishingConnection(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const projectId = getString(formData, "project_id");
+  const platform = getString(formData, "platform");
+  const pathname = `/projects/${projectId}/settings`;
+
+  if (!projectId || !isPublishingConnectionPlatform(platform)) {
+    redirectWithError("/settings", "Publishing connection is required.");
+  }
+
+  const { error } = await supabase
+    .from("publishing_connections")
+    .update({
+      connection_status: "disabled",
+      access_token_encrypted: "",
+      refresh_token_encrypted: "",
+      access_token_encrypted_placeholder: "",
+      refresh_token_encrypted_placeholder: "",
+      token_reference: "",
+      refresh_token_reference: "",
+      last_error: "Disconnected by user.",
+      last_checked_at: new Date().toISOString(),
+    })
+    .eq("project_id", projectId)
+    .eq("owner_id", user.id)
+    .eq("platform", platform);
+
+  if (error) {
+    redirectWithError(pathname, error.message);
+  }
+
+  revalidatePath(pathname);
+  redirect(`${pathname}?success=disconnected`);
 }
 
 async function updatePublisherQueueStatus(

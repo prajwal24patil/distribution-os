@@ -595,6 +595,8 @@ export type PublishingConnectionRow = {
   connection_status: PublishingConnectionStatus;
   account_name: string;
   account_id: string;
+  access_token_encrypted: string;
+  refresh_token_encrypted: string;
   access_token_encrypted_placeholder: string;
   refresh_token_encrypted_placeholder: string;
   token_reference: string;
@@ -616,6 +618,8 @@ export type PublishingConnectionInsert = {
   connection_status?: PublishingConnectionStatus;
   account_name?: string;
   account_id?: string;
+  access_token_encrypted?: string;
+  refresh_token_encrypted?: string;
   access_token_encrypted_placeholder?: string;
   refresh_token_encrypted_placeholder?: string;
   token_reference?: string;
@@ -640,6 +644,8 @@ export type ScheduledPostStatus =
   | "failed"
   | "skipped"
   | "manual_required"
+  | "manual_review_required"
+  | "retry_scheduled"
   | "auto_publish_ready";
 
 export type ScheduledPostPublishMode = "manual_approval" | "official_auto_publish" | "disabled";
@@ -659,6 +665,7 @@ export type ScheduledPostRow = {
   status: ScheduledPostStatus;
   publish_mode: ScheduledPostPublishMode;
   publish_attempts: number;
+  published_at: string | null;
   published_url: string;
   failure_reason: string;
   created_at: string;
@@ -679,6 +686,7 @@ export type ScheduledPostInsert = {
   status?: ScheduledPostStatus;
   publish_mode?: ScheduledPostPublishMode;
   publish_attempts?: number;
+  published_at?: string | null;
   published_url?: string;
   failure_reason?: string;
 };

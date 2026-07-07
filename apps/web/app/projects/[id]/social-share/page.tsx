@@ -25,6 +25,9 @@ type SocialShareCenterProps = {
 
 function statusLabel(status: string) {
   if (status === "auto_publish_ready") return "Auto-publish ready";
+  if (status === "retry_scheduled") return "Retry scheduled";
+  if (status === "published") return "Published";
+  if (status === "failed") return "Failed";
   return "Manual required";
 }
 
@@ -148,7 +151,7 @@ export default async function SocialShareCenterPage({ params }: SocialShareCente
                         {asset.platform.replace(/_/g, " ")}
                       </p>
                       <span className="rounded bg-neutral-100 px-2 py-1 text-xs font-semibold text-neutral-700">
-                        {statusLabel(asset.status)}
+                        {statusLabel(queueItem.status)}
                       </span>
                       <span className="rounded bg-neutral-100 px-2 py-1 text-xs font-semibold text-neutral-700">
                         QC {asset.qc_status}
@@ -164,6 +167,12 @@ export default async function SocialShareCenterPage({ params }: SocialShareCente
                       <p>Audience: {asset.audience}</p>
                       <p>CTA: {asset.cta}</p>
                       <p>Connection: {connectionStatusFor(asset.platform, connections)}</p>
+                      <p>
+                        Auto-post:{" "}
+                        {decision.publish_decision === "auto_publish_ready"
+                          ? "Ready if scheduled"
+                          : "Manual required"}
+                      </p>
                       <p>Scheduled: {queueItem.scheduled_for || "Not scheduled"}</p>
                     </div>
                     <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-neutral-700">
@@ -198,7 +207,9 @@ export default async function SocialShareCenterPage({ params }: SocialShareCente
                       disabled
                       type="button"
                     >
-                      Retry
+                      {queueItem.status === "failed" || queueItem.status === "retry_scheduled"
+                        ? "Retry"
+                        : "Retry"}
                     </button>
                     <button
                       className="h-8 rounded border border-neutral-300 px-3 text-xs font-semibold text-neutral-500"

@@ -56,7 +56,8 @@ function connectionFor(
 
 function hasScopes(connection: PublishingConnectionRow | null, scopes: string[]) {
   if (!connection) return false;
-  return scopes.every((scope) => connection.permissions.includes(scope));
+  const granted = `${connection.scopes} ${connection.permissions}`;
+  return scopes.every((scope) => granted.includes(scope));
 }
 
 export function decideSocialDeployment(
