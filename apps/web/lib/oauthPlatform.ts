@@ -5,6 +5,7 @@ import {
   assertPlatformTokenEncryptionConfigured,
 } from "@/lib/platformTokenVault";
 import { getPublicAppUrl } from "@/lib/publicUrl";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import type { PublishingConnectionPlatform } from "@/lib/supabase/types";
 
@@ -71,6 +72,11 @@ function settingsRedirect(projectId: string, params: Record<string, string>) {
   return NextResponse.redirect(
     `${getPublicAppUrl()}/projects/${projectId}/settings?${search.toString()}`,
   );
+}
+
+function genericSettingsRedirect(params: Record<string, string>) {
+  const search = new URLSearchParams(params);
+  return NextResponse.redirect(`${getPublicAppUrl()}/settings?${search.toString()}`);
 }
 
 function codeChallenge(verifier: string) {
@@ -140,29 +146,32 @@ async function exchangeXToken({
   clientId,
   clientSecret,
   redirectUri,
-  useBasicAuth,
+  authAttempt,
 }: {
   code: string;
   codeVerifier: string;
   clientId: string;
   clientSecret: string;
   redirectUri: string;
-  useBasicAuth: boolean;
+  authAttempt: "basic" | "body_secret" | "public_pkce";
 }) {
   const body = new URLSearchParams({
     grant_type: "authorization_code",
     code,
     redirect_uri: redirectUri,
     code_verifier: codeVerifier,
-    client_id: clientId,
   });
   const headers: Record<string, string> = {
     "Content-Type": "application/x-www-form-urlencoded",
   };
 
-  if (useBasicAuth) {
+  if (authAttempt === "basic") {
     headers.Authorization = `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`;
   } else {
+    body.set("client_id", clientId);
+  }
+
+  if (authAttempt === "body_secret") {
     body.set("client_secret", clientSecret);
   }
 
@@ -183,11 +192,14 @@ function logSafeTokenExchangeFailure(input: {
   hasCodeVerifier: boolean;
   hasClientId: boolean;
   hasClientSecret: boolean;
+  authAttempt: "basic" | "body_secret" | "public_pkce";
   reason: string;
 }) {
-  console.error("[oauth:x:token_exchange_failed]", {
-    token_endpoint_status: input.status,
-    token_endpoint_response_body: input.responseBody,
+  console.error({
+    provider: "x",
+    stage: "token_exchange",
+    status: input.status,
+    error_body: input.responseBody,
     redirect_uri_used: input.redirectUri,
     has_code: input.hasCode,
     has_state: input.hasState,
@@ -195,9 +207,11 @@ function logSafeTokenExchangeFailure(input: {
     has_code_verifier: input.hasCodeVerifier,
     has_client_id: input.hasClientId,
     has_client_secret: input.hasClientSecret,
-    app_callback_url_expected: process.env.X_REDIRECT_URI || "",
-    reason: input.reason,
-    possible_cause: possibleTokenFailureCause(input.reason),
+    auth_attempt: input.authAttempt,
+    likely_cause:
+      input.status === 401 || input.reason === "invalid_client"
+        ? "wrong X_CLIENT_ID/X_CLIENT_SECRET or keys from different X app"
+        : possibleTokenFailureCause(input.reason),
   });
 }
 
@@ -257,7 +271,7 @@ export async function startXOAuth(request: Request) {
     customerId,
     workspaceId,
   });
-  const authorizationUrl = new URL("https://twitter.com/i/oauth2/authorize");
+  const authorizationUrl = new URL("https://x.com/i/oauth2/authorize");
   authorizationUrl.searchParams.set("response_type", "code");
   authorizationUrl.searchParams.set("client_id", xClientId);
   authorizationUrl.searchParams.set("redirect_uri", oauthRedirectUri("x"));
@@ -293,10 +307,7 @@ export async function startXOAuth(request: Request) {
 }
 
 export async function handleXOAuthCallback(request: Request) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const supabase = createAdminClient();
   const url = new URL(request.url);
   const code = url.searchParams.get("code") || "";
   const stateParam = url.searchParams.get("state") || "";
@@ -304,30 +315,35 @@ export async function handleXOAuthCallback(request: Request) {
   const storedState = cookieValue(request, "x_oauth_state");
   const storedProjectId = cookieValue(request, "x_oauth_project_id");
 
-  if (!user) {
-    return NextResponse.redirect(`${getPublicAppUrl()}/login`);
-  }
-
   let state: ReturnType<typeof decodeState>;
 
   try {
     state = decodeState(stateParam);
   } catch {
-    return NextResponse.json({ error: "Invalid OAuth state." }, { status: 400 });
+    return storedProjectId
+      ? settingsRedirect(storedProjectId, {
+          error: "X OAuth token exchange failed",
+          reason: "state_mismatch",
+        })
+      : genericSettingsRedirect({
+          error: "X OAuth token exchange failed",
+          reason: "state_mismatch",
+        });
   }
 
   const stateMatches = Boolean(storedState && storedState === stateParam);
 
-  if (state.ownerId !== user.id || state.platform !== "x" || !stateMatches) {
-    return NextResponse.json(
-      { error: "OAuth state does not match the current user." },
-      { status: 403 },
-    );
+  if (state.platform !== "x" || !stateMatches) {
+    return settingsRedirect(storedProjectId || state.projectId, {
+      error: "X OAuth token exchange failed",
+      reason: "state_mismatch",
+    });
   }
 
   if (!code || !verifier) {
     return settingsRedirect(storedProjectId || state.projectId, {
-      error: "X OAuth callback is missing code verifier.",
+      error: "X OAuth token exchange failed",
+      reason: "missing_code_verifier",
     });
   }
 
@@ -349,50 +365,88 @@ export async function handleXOAuthCallback(request: Request) {
     });
   }
 
-  const tokenResponse = await exchangeXToken({
+  const { data: project, error: projectError } = await supabase
+    .from("projects")
+    .select("id, user_id")
+    .eq("id", state.projectId)
+    .maybeSingle();
+
+  if (projectError || !project || project.user_id !== state.ownerId) {
+    return settingsRedirect(storedProjectId || state.projectId, {
+      error: "X OAuth token exchange failed",
+      reason: "state_mismatch",
+    });
+  }
+
+  const exchangeBase = {
     code,
     codeVerifier,
     clientId: clientId || "",
     clientSecret: clientSecret || "",
     redirectUri: redirectUri || oauthRedirectUri("x"),
-    useBasicAuth: true,
+  };
+
+  const tokenResponse = await exchangeXToken({
+    ...exchangeBase,
+    authAttempt: "basic",
   });
 
   if (!tokenResponse.ok) {
     const firstResponseBody = await tokenResponse.text();
-    const retryResponse = await exchangeXToken({
-      code,
-      codeVerifier,
-      clientId: clientId || "",
-      clientSecret: clientSecret || "",
-      redirectUri: redirectUri || oauthRedirectUri("x"),
-      useBasicAuth: false,
-    });
+    const firstReason = tokenFailureReason(tokenResponse.status, firstResponseBody);
+    let retryResponse: Response | null = null;
+    let retryResponseBody = "";
+    let finalResponse = tokenResponse;
+    let finalResponseBody = firstResponseBody;
+    let finalReason = firstReason;
+    let finalAttempt: "basic" | "body_secret" | "public_pkce" = "basic";
 
-    if (!retryResponse.ok) {
-      const retryResponseBody = await retryResponse.text();
-      const reason = tokenFailureReason(retryResponse.status, retryResponseBody);
+    if (tokenResponse.status === 401 || firstReason === "invalid_client") {
+      retryResponse = await exchangeXToken({
+        ...exchangeBase,
+        authAttempt: "body_secret",
+      });
+      retryResponseBody = await retryResponse.text();
+      finalResponse = retryResponse;
+      finalResponseBody = retryResponseBody;
+      finalReason = tokenFailureReason(retryResponse.status, retryResponseBody);
+      finalAttempt = "body_secret";
+    }
 
+    if (retryResponse && !retryResponse.ok) {
+      const publicResponse = await exchangeXToken({
+        ...exchangeBase,
+        authAttempt: "public_pkce",
+      });
+      const publicResponseBody = await publicResponse.text();
+      finalResponse = publicResponse;
+      finalResponseBody = publicResponseBody;
+      finalReason = tokenFailureReason(publicResponse.status, publicResponseBody);
+      finalAttempt = "public_pkce";
+    }
+
+    if (!finalResponse.ok) {
       logSafeTokenExchangeFailure({
-        status: retryResponse.status,
-        responseBody: retryResponseBody || firstResponseBody,
-        redirectUri: redirectUri || oauthRedirectUri("x"),
+        status: finalResponse.status,
+        responseBody: finalResponseBody,
+        redirectUri: exchangeBase.redirectUri,
         hasCode: Boolean(code),
         hasState: Boolean(stateParam),
         stateMatches,
         hasCodeVerifier: Boolean(codeVerifier),
         hasClientId: Boolean(clientId),
         hasClientSecret: Boolean(clientSecret),
-        reason,
+        authAttempt: finalAttempt,
+        reason: finalReason,
       });
 
       await supabase.from("publishing_connections").upsert(
         {
           project_id: state.projectId,
-          owner_id: user.id,
+          owner_id: project.user_id,
           platform: "x",
           connection_status: "manual_required",
-          last_error: `${reason}: ${possibleTokenFailureCause(reason)}`,
+          last_error: `${finalReason}: ${possibleTokenFailureCause(finalReason)}`,
           last_checked_at: new Date().toISOString(),
         },
         { onConflict: "project_id,owner_id,platform" },
@@ -400,11 +454,11 @@ export async function handleXOAuthCallback(request: Request) {
 
       return settingsRedirect(state.projectId, {
         error: "X OAuth token exchange failed",
-        reason,
+        reason: finalReason,
       });
     }
 
-    const retryTokenPayload = (await retryResponse.json()) as {
+    const retryTokenPayload = (await finalResponse.json()) as {
       access_token?: string;
       refresh_token?: string;
       expires_in?: number;
@@ -413,7 +467,7 @@ export async function handleXOAuthCallback(request: Request) {
 
     return saveXConnection({
       supabase,
-      userId: user.id,
+      userId: project.user_id,
       stateProjectId: state.projectId,
       tokenPayload: retryTokenPayload,
     });
@@ -432,7 +486,7 @@ export async function handleXOAuthCallback(request: Request) {
 
   return saveXConnection({
     supabase,
-    userId: user.id,
+    userId: project.user_id,
     stateProjectId: state.projectId,
     tokenPayload,
   });
@@ -444,7 +498,7 @@ async function saveXConnection({
   stateProjectId,
   tokenPayload,
 }: {
-  supabase: Awaited<ReturnType<typeof createClient>>;
+  supabase: ReturnType<typeof createAdminClient>;
   userId: string;
   stateProjectId: string;
   tokenPayload: {
