@@ -47,6 +47,7 @@ const settings = read("apps/web/app/projects/[id]/settings/page.tsx");
 const migration = read("database/migrations/0020_create_official_social_oauth_foundation.sql");
 const types = read("apps/web/lib/supabase/types.ts");
 const debugRoute = read("apps/web/app/api/debug/platform-status/route.ts");
+const xEnvDebugRoute = read("apps/web/app/api/debug/x-oauth-env/route.ts");
 
 ok(oauth.includes("startXOAuth"), "X OAuth start helper exists");
 ok(oauth.includes("handleXOAuthCallback"), "X OAuth callback helper exists");
@@ -61,11 +62,15 @@ ok(oauth.includes("https://api.x.com/2/oauth2/token"), "X OAuth uses api.x.com t
 ok(oauth.includes("x_oauth_state"), "X OAuth stores state cookie");
 ok(oauth.includes("x_oauth_project_id"), "X OAuth stores project cookie");
 ok(oauth.includes("stateMatches"), "X OAuth validates stored state");
-ok(oauth.includes('authAttempt: "basic"'), "X OAuth first tries confidential Basic auth");
-ok(oauth.includes('authAttempt: "body_secret"'), "X OAuth retries with body secret");
-ok(oauth.includes('authAttempt: "public_pkce"'), "X OAuth has public PKCE fallback");
-ok(oauth.includes("client_secret"), "X OAuth body-secret retry can send client_secret");
+ok(oauth.includes("Authorization: `Basic ${Buffer.from("), "X OAuth uses confidential Basic auth");
+ok(oauth.includes("encodeURIComponent(clientId)"), "X OAuth encodes client id in Basic auth");
+ok(oauth.includes("encodeURIComponent(clientSecret)"), "X OAuth encodes client secret in Basic auth");
+ok(!oauth.includes('authAttempt: "body_secret"'), "X OAuth does not retry with body-secret auth");
+ok(!oauth.includes('authAttempt: "public_pkce"'), "X OAuth does not retry with public PKCE auth");
+ok(!oauth.includes('body.set("client_id"'), "X OAuth does not send client_id in token body");
+ok(!oauth.includes('body.set("client_secret"'), "X OAuth does not send client_secret in token body");
 ok(oauth.includes("logSafeTokenExchangeFailure"), "X OAuth logs safe token diagnostics");
+ok(oauth.includes("client_id_prefix"), "X OAuth logs safe client id prefix only");
 ok(oauth.includes("invalid_client"), "X OAuth detects invalid_client");
 ok(oauth.includes("redirect_uri_mismatch"), "X OAuth detects redirect URI mismatch");
 ok(oauth.includes("DistributionOS CareerScore"), "X OAuth explains likely wrong app client secret");
@@ -99,6 +104,9 @@ ok(!debugRoute.includes("refresh_token_encrypted"), "debug route does not expose
 ok(debugRoute.includes("token_connected: Boolean"), "debug route returns token boolean only");
 ok(debugRoute.includes("latest_token_expiry_exists"), "debug route shows token expiry presence");
 ok(debugRoute.includes("auto_publish_ready"), "debug route shows X auto-publish readiness");
+ok(xEnvDebugRoute.includes("clientIdPrefix"), "X OAuth env debug route shows client id prefix");
+ok(!xEnvDebugRoute.includes("X_CLIENT_SECRET:"), "X OAuth env debug route does not expose client secret");
+ok(xEnvDebugRoute.includes("hasClientSecret"), "X OAuth env debug route shows secret presence boolean");
 
 if (process.exitCode) {
   process.exit(process.exitCode);
